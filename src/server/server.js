@@ -4729,7 +4729,51 @@ function hasBrokenLyricText(text) {
   return typeof text === 'string' && text.includes('\uFFFD');
 }
 
-function fetchLyricsDirect(title, artist) {
+function lrclibJson(requestUrl) {
+  return new Promise((resolve) => {
+    const req = https.get(requestUrl, { headers: { 'User-Agent': 'Soulleak/1.0' }, timeout: 8000 }, (res) => {
+      const chunks = [];
+      res.on('data', chunk => chunks.push(chunk));
+      res.on('end', () => {
+        if (res.statusCode !== 200) return resolve(null);
+        try { resolve(JSON.parse(decodeUtf8Chunks(chunks))); } catch (e) { resolve(null); }
+      });
+    });
+    req.on('timeout', () => { req.destroy(); logNetworkFailure(requestUrl); resolve(null); });
+    req.on('error', () => { logNetworkFailure(requestUrl); resolve(null); });
+  });
+}
+
+// The same title often exists in several recordings (radio edit, feature version, remaster) with different
+// timings. With the playing track's duration we pick the LRCLIB entry for that exact recording.
+async function fetchLyricsForDuration(title, artist, duration) {
+  const { cleanTitle, cleanArtist } = sanitizeForLyrics(title, artist);
+  const dur = Math.round(duration);
+  const norm = (s) => String(s || '').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+  const wantTitle = norm(title);
+
+  // Gather candidates from the full title (keeps "(with JENNIE)", "(Remix)"...), the cleaned title, and an exact-length lookup.
+  const [rawList, cleanList, exact] = await Promise.all([
+    lrclibJson(`https://lrclib.net/api/search?q=${encodeURIComponent(`${title || ''} ${artist || ''}`.trim())}`),
+    lrclibJson(`https://lrclib.net/api/search?q=${encodeURIComponent(`${cleanArtist} ${cleanTitle}`.trim())}`),
+    lrclibJson(`https://lrclib.net/api/get?track_name=${encodeURIComponent(cleanTitle)}&artist_name=${encodeURIComponent(cleanArtist)}&duration=${dur}`)
+  ]);
+  const candidates = [...(Array.isArray(rawList) ? rawList : []), ...(Array.isArray(cleanList) ? cleanList : []), ...(exact ? [exact] : [])];
+
+  // Right length first (within 3 s), then the same title; LRCLIB entries are crowd-made and a similar length alone isn't enough.
+  const best = candidates
+    .filter(c => c && c.syncedLyrics && !c.instrumental && Number(c.duration) > 0 && Math.abs(c.duration - dur) <= 3)
+    .map(c => ({ c, score: Math.abs(c.duration - dur) + (norm(c.trackName) === wantTitle ? 0 : 2) }))
+    .sort((a, b) => a.score - b.score)[0];
+  if (best) return best.c.syncedLyrics;
+
+  if (exact && exact.instrumental) return { instrumental: true, syncedLyrics: '', plainLyrics: '' };
+  // No recording of the right length: fall back to the usual title/artist match.
+  return fetchLyricsDirect(title, artist);
+}
+
+function fetchLyricsDirect(title, artist, duration = 0) {
+  if (duration > 0) return fetchLyricsForDuration(title, artist, duration);
   return new Promise((resolve) => {
     const { cleanTitle, cleanArtist } = sanitizeForLyrics(title, artist);
     const apiUrl = `https://lrclib.net/api/get?track_name=${encodeURIComponent(cleanTitle)}&artist_name=${encodeURIComponent(cleanArtist)}`;
@@ -5439,8 +5483,10 @@ function getCustomLyricsPath(title, artist) {
   return path.join(CUSTOM_LYRICS_DIR, lyricsKey(title, artist) + '.lrc');
 }
 
-function getFetchedLyricsPath(title, artist, source = 'lrclib') {
-  return path.join(LYRICS_DIR, lyricsKey(title, artist) + (source === 'genius' ? '_genius' : '') + '.lrc');
+// LRCLIB lyrics are cached per recording length, so two versions of the same song never share a file.
+function getFetchedLyricsPath(title, artist, source = 'lrclib', duration = 0) {
+  const lengthTag = source === 'lrclib' && duration > 0 ? `_d${Math.round(duration)}` : '';
+  return path.join(LYRICS_DIR, lyricsKey(title, artist) + (source === 'genius' ? '_genius' : '') + lengthTag + '.lrc');
 }
 
 function isLyricsExplicit(lyrics) {
@@ -5450,7 +5496,8 @@ function isLyricsExplicit(lyrics) {
 
 async function handleLyrics(req, res, title, artist, allowOnline = true, source = 'lrclib', duration = 0) {
   const normSource = source || 'lrclib';
-  const cacheKey = `${artist || ''}:${title || ''}:${normSource}`.toLowerCase();
+  const lrclibDuration = normSource === 'lrclib' && duration > 0 ? Math.round(duration) : 0;
+  const cacheKey = `${artist || ''}:${title || ''}:${normSource}${lrclibDuration ? ':' + lrclibDuration : ''}`.toLowerCase();
   let cached = lyricsCache.get(cacheKey);
   if (cached?.promise) {
     const outcome = await cached.promise;
@@ -5517,8 +5564,9 @@ async function handleLyrics(req, res, title, artist, allowOnline = true, source 
       return sendInstrumental();
     }
 
-    let fetchedLyricsPath = getFetchedLyricsPath(title, artist, normSource);
-    if (!fs.existsSync(fetchedLyricsPath) && /^[\x00-\x7F]*$/.test((title || '') + (artist || ''))) {
+    let fetchedLyricsPath = getFetchedLyricsPath(title, artist, normSource, lrclibDuration);
+    // Older cache files don't record which recording they belong to, so skip them when the length is known.
+    if (!lrclibDuration && !fs.existsSync(fetchedLyricsPath) && /^[\x00-\x7F]*$/.test((title || '') + (artist || ''))) {
       const legacyFetched = legacyFetchedLyricsPath(title, artist);
       if (fs.existsSync(legacyFetched)) {
         fetchedLyricsPath = legacyFetched;
@@ -5567,7 +5615,7 @@ async function handleLyrics(req, res, title, artist, allowOnline = true, source 
 
         
 
-        const lrcLib = await fetchLrcLib(title, artist);
+        const lrcLib = await fetchLrcLib(title, artist, lrclibDuration);
         if (lrcLib && lrcLib.instrumental) {
           return sendInstrumental();
         }

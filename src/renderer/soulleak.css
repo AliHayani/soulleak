@@ -538,6 +538,410 @@
 
 .soul-line.short { width: 60%; }
 
+/* ---------- Fullscreen player ---------- */
+
+/* Expand button: sits on the player-bar cover and shows on hover. */
+.artwork-wrapper { position: relative; }
+
+.soul-fs-open {
+  position: absolute;
+  inset: auto 4px 4px auto;
+  z-index: 5;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border: 0;
+  border-radius: 9px;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  backdrop-filter: blur(6px);
+  opacity: 0;
+  transform: scale(0.8);
+  cursor: pointer;
+  transition: opacity 0.18s ease, transform 0.35s var(--sl-spring), background-color 0.18s ease;
+}
+
+.soul-fs-open svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.playbar-left:hover .soul-fs-open,
+.soul-fs-open:focus-visible {
+  opacity: 1;
+  transform: none;
+}
+
+.soul-fs-open:hover {
+  background: var(--md-sys-color-primary);
+  color: var(--md-sys-color-on-primary);
+  transform: scale(1.08);
+}
+
+.soul-fs {
+  --beat: 0;
+  position: fixed;
+  inset: 0;
+  z-index: 100000;
+  display: none;
+  overflow: hidden;
+  background: #07060a;
+  color: #fff;
+  font-family: var(--font-family);
+}
+
+.soul-fs.open {
+  display: block;
+  animation: soulFsIn 0.55s var(--sl-ease) both;
+}
+
+@keyframes soulFsIn {
+  from { opacity: 0; transform: scale(1.03); }
+}
+
+/* The cover, blown up and blurred, becomes the room. */
+.soul-fs-bg {
+  position: absolute;
+  inset: -12%;
+  background-size: cover;
+  background-position: center;
+  filter: blur(70px) saturate(1.5) brightness(0.55);
+  transform: scale(calc(1.05 + var(--beat) * 0.02));
+  transition: background-image 0.8s ease;
+}
+
+.soul-fs-bg::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 30% 45%, transparent 0%, rgba(7, 6, 10, 0.35) 55%, rgba(7, 6, 10, 0.85) 100%),
+    linear-gradient(180deg, rgba(7, 6, 10, 0.1), rgba(7, 6, 10, 0.55));
+}
+
+.soul-fs.lite .soul-fs-bg { filter: brightness(0.35); }
+
+.soul-fs-close {
+  position: absolute;
+  top: 22px;
+  right: 22px;
+  z-index: 3;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  cursor: pointer;
+  transition: background-color 0.2s ease, transform 0.35s var(--sl-spring);
+}
+
+.soul-fs-close svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.soul-fs-close:hover {
+  background: rgba(255, 255, 255, 0.18);
+  transform: scale(1.08);
+}
+
+.soul-fs-stage {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: minmax(300px, 0.9fr) minmax(0, 1.1fr);
+  align-items: center;
+  gap: clamp(32px, 6vw, 110px);
+  height: 100%;
+  padding: clamp(40px, 6vh, 80px) clamp(32px, 7vw, 140px);
+}
+
+/* No lyrics: the player sits alone in the middle. */
+.soul-fs.no-lyrics .soul-fs-stage { grid-template-columns: minmax(300px, 520px); justify-content: center; }
+.soul-fs.no-lyrics .soul-fs-lyrics { display: none; }
+
+.soul-fs-player {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  width: min(100%, 520px);
+  justify-self: center;
+  animation: slRise 0.7s var(--sl-ease) 0.1s both;
+}
+
+.soul-fs-art-wrap {
+  aspect-ratio: 1;
+  width: min(100%, 58vh);
+  align-self: center;
+  border-radius: 26px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.06);
+  box-shadow: 0 40px 90px -30px rgba(0, 0, 0, 0.8);
+  transform: scale(calc(1 + var(--beat) * 0.025));
+}
+
+.soul-fs:not(.is-playing) .soul-fs-art-wrap {
+  transform: scale(0.94);
+  transition: transform 0.6s var(--sl-ease);
+}
+
+.soul-fs-art {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.soul-fs-wave {
+  width: min(100%, 58vh);
+  height: 56px;
+  margin-top: 22px;
+  align-self: center;
+}
+
+.soul-fs-meta {
+  margin-top: 14px;
+  text-align: center;
+}
+
+.soul-fs-title {
+  font-family: var(--sl-display);
+  font-size: clamp(24px, 3vw, 34px);
+  font-weight: 750;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+}
+
+.soul-fs-artist {
+  margin-top: 6px;
+  font-size: 16px;
+  color: rgba(255, 255, 255, 0.65);
+}
+
+.soul-fs-progress {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 22px;
+}
+
+.soul-fs-time {
+  min-width: 38px;
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.soul-fs-time:last-child { text-align: right; }
+
+.soul-fs-bar {
+  position: relative;
+  flex: 1;
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.18);
+  cursor: pointer;
+  transition: height 0.2s ease;
+}
+
+.soul-fs-bar:hover { height: 9px; }
+
+.soul-fs-fill {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: #fff;
+  transform-origin: left center;
+  transform: scaleX(0);
+}
+
+.soul-fs-controls {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 26px;
+  margin-top: 18px;
+}
+
+.soul-fs-btn {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.85);
+  cursor: pointer;
+  transition: background-color 0.2s ease, color 0.2s ease, transform 0.35s var(--sl-spring);
+}
+
+.soul-fs-btn svg {
+  width: 24px;
+  height: 24px;
+  fill: currentColor;
+}
+
+.soul-fs-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  transform: scale(1.08);
+}
+
+.soul-fs-btn:active { transform: scale(0.92); }
+
+.soul-fs-play {
+  width: 64px;
+  height: 64px;
+  background: #fff;
+  color: #0b0a0e;
+}
+
+.soul-fs-play:hover {
+  background: #fff;
+  color: #0b0a0e;
+}
+
+.soul-fs-play svg { width: 28px; height: 28px; }
+.soul-fs-play .i-pause { display: none; }
+.soul-fs.is-playing .soul-fs-play .i-pause { display: block; }
+.soul-fs.is-playing .soul-fs-play .i-play { display: none; }
+
+/* Lyrics: big type, the current line lifts and glows, the rest fade back. */
+.soul-fs-lyrics {
+  height: 100%;
+  overflow-y: auto;
+  padding: 38vh 8px 45vh 0;
+  scrollbar-width: none;
+  -webkit-mask-image: linear-gradient(180deg, transparent 0%, #000 22%, #000 72%, transparent 100%);
+  mask-image: linear-gradient(180deg, transparent 0%, #000 22%, #000 72%, transparent 100%);
+  animation: slRise 0.7s var(--sl-ease) 0.2s both;
+}
+
+.soul-fs-lyrics::-webkit-scrollbar { display: none; }
+
+.soul-fs-lyrics.is-static {
+  padding-top: 18vh;
+  -webkit-mask-image: none;
+  mask-image: none;
+}
+
+.soul-fs-line {
+  padding: 10px 14px;
+  margin-left: -14px;
+  border-radius: 16px;
+  font-family: var(--sl-display);
+  font-size: clamp(26px, 2.9vw, 42px);
+  font-weight: 750;
+  line-height: 1.18;
+  letter-spacing: -0.025em;
+  color: rgba(255, 255, 255, 0.32);
+  transform-origin: left center;
+  transform: scale(0.96);
+  cursor: pointer;
+  transition: color 0.4s ease, transform 0.55s var(--sl-spring), text-shadow 0.4s ease, background-color 0.2s ease;
+}
+
+.soul-fs-line.is-past { color: rgba(255, 255, 255, 0.5); }
+
+/* The current line lights up fast (so it lands on the beat); lines fading back can take their time. */
+.soul-fs-line.is-active {
+  color: #fff;
+  transform: scale(1.02);
+  text-shadow: 0 0 34px rgba(255, 255, 255, 0.35);
+  transition: color 0.12s ease-out, transform 0.55s var(--sl-spring), text-shadow 0.3s ease, background-color 0.2s ease;
+}
+
+.soul-fs-line:hover {
+  color: rgba(255, 255, 255, 0.85);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.soul-fs-line.is-gap {
+  font-size: 22px;
+  letter-spacing: 0.3em;
+}
+
+.soul-fs-lyrics.is-static .soul-fs-line {
+  color: rgba(255, 255, 255, 0.8);
+  transform: none;
+  cursor: default;
+}
+
+.soul-fs-note {
+  margin-bottom: 18px;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+/* Lyrics timing nudge: faint until you hover it or set an offset. */
+.soul-fs-sync {
+  position: absolute;
+  right: 32px;
+  bottom: 26px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+  color: rgba(255, 255, 255, 0.55);
+  opacity: 0.45;
+  transition: opacity 0.2s ease, background-color 0.2s ease;
+}
+
+.soul-fs-sync:hover,
+.soul-fs-sync.is-set {
+  opacity: 1;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.soul-fs-sync.is-set { color: #fff; }
+.soul-fs.no-lyrics .soul-fs-sync { display: none; }
+
+.soul-fs-sync span { padding: 0 6px; min-width: 92px; text-align: center; }
+
+.soul-fs-sync button {
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: inherit;
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.soul-fs-sync button:hover { background: rgba(255, 255, 255, 0.14); }
+
+/* Narrow windows: stack the lyrics under the player. */
+@media (max-width: 900px) {
+  .soul-fs-stage {
+    grid-template-columns: 1fr;
+    overflow-y: auto;
+    align-content: start;
+  }
+  .soul-fs-lyrics { height: 50vh; padding: 20vh 0 25vh; }
+}
+
 /* ---------- Entering Soul Search ---------- */
 
 /* Only the content panel takes part; the rest of the window swaps instantly. */

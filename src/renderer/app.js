@@ -5100,7 +5100,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       let data = lyricsSessionCache.get(lyricsCacheKey);
       if (!data) {
         const onlineParam = getAdv('online_lyrics', true) ? '1' : '0';
-        const durationParam = (state.currentTrack && state.currentTrack.duration) ? `&duration=${encodeURIComponent(state.currentTrack.duration)}` : '';
+        const lyricsDuration = state.currentTrack && (state.currentTrack._audioDuration || state.currentTrack.duration);
+        const durationParam = lyricsDuration ? `&duration=${encodeURIComponent(lyricsDuration)}` : '';
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 4000);
         try {
@@ -8564,6 +8565,17 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     el.nativeAudio.addEventListener('stalled', () => {
       if (!el.nativeAudio.paused) watchPlaybackStall();
+    });
+
+    // The stream can be a different upload than the track's metadata describes (another length, another intro).
+    // When the real length differs, fetch the lyrics again for the recording that is actually playing.
+    el.nativeAudio.addEventListener('durationchange', () => {
+      const tr = state.currentTrack;
+      const d = el.nativeAudio.duration;
+      if (!tr || tr._audioDuration || !Number.isFinite(d) || d < 20) return;
+      if (Math.abs(d - (Number(tr.duration) || 0)) <= 3) return;
+      tr._audioDuration = Math.round(d);
+      if (!state.isCustomLyrics) loadSyncedLyrics(tr.title, tr.artist, state.loadToken);
     });
 
     function prefetchNextQueueTrack() {
@@ -20463,6 +20475,307 @@ function bindCoverHoldZoom(wrapEl) {
       e.preventDefault();
       openSoulPlaylist(Number(e.target.dataset.idx), 'play');
     });
+  }
+
+  // Fullscreen player: the cover takes over, a beat wave runs under it, and synced lyrics light up line by line.
+  const soulFs = {
+    root: document.getElementById('soul-fs'),
+    bg: document.getElementById('soul-fs-bg'),
+    art: document.getElementById('soul-fs-art'),
+    wave: document.getElementById('soul-fs-wave'),
+    title: document.getElementById('soul-fs-title'),
+    artist: document.getElementById('soul-fs-artist'),
+    cur: document.getElementById('soul-fs-cur'),
+    dur: document.getElementById('soul-fs-dur'),
+    bar: document.getElementById('soul-fs-bar'),
+    fill: document.getElementById('soul-fs-fill'),
+    lyrics: document.getElementById('soul-fs-lyrics'),
+    open: false,
+    raf: 0,
+    track: null,
+    lyricsRef: null,
+    synced: false,
+    lineEls: [],
+    activeIdx: -2,
+    lastSecond: -1,
+    userScrollUntil: 0,
+    freq: null,
+    bars: new Float32Array(56),
+    bassAvg: 0,
+    beat: 0
+  };
+
+  function fsTime(sec) {
+    if (!Number.isFinite(sec) || sec < 0) return '0:00';
+    const s = Math.floor(sec);
+    return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+  }
+
+  function fsSyncTrack() {
+    const t = state.currentTrack;
+    soulFs.track = t;
+    const art = (document.getElementById('playbar-artwork') || {}).src || (t ? getTrackThumbUrl(t) : '');
+    if (art) {
+      soulFs.art.src = art;
+      soulFs.bg.style.backgroundImage = `url("${art.replace(/"/g, '%22')}")`;
+    }
+    soulFs.title.textContent = (t && t.title) || '';
+    soulFs.artist.textContent = (t && t.artist) || '';
+    soulFs.offset = Number(fsOffsets()[fsTrackKey(t)]) || 0;
+    fsShowOffset();
+  }
+
+  function fsRenderLyrics() {
+    const lines = Array.isArray(state.syncedLyrics) ? state.syncedLyrics : [];
+    soulFs.lyricsRef = state.syncedLyrics;
+    soulFs.activeIdx = -2;
+    soulFs.synced = lines.some(l => l && l.time >= 0);
+    soulFs.root.classList.toggle('no-lyrics', !lines.some(l => l && l.text));
+    soulFs.lyrics.innerHTML = '';
+    soulFs.lineEls = lines.map((l) => {
+      const div = document.createElement('div');
+      div.className = 'soul-fs-line' + (l.isGap || !l.text ? ' is-gap' : '');
+      div.textContent = l.isGap || !l.text ? '• • •' : l.text;
+      if (soulFs.synced && l.time >= 0) {
+        div.addEventListener('click', () => {
+          if (el.nativeAudio) el.nativeAudio.currentTime = l.time;
+          soulFs.userScrollUntil = 0;
+        });
+      }
+      soulFs.lyrics.appendChild(div);
+      return div;
+    });
+    if (!soulFs.synced && lines.length) {
+      const note = document.createElement('div');
+      note.className = 'soul-fs-note';
+      note.textContent = "These lyrics aren't synced, so they won't follow along.";
+      soulFs.lyrics.prepend(note);
+    }
+    soulFs.lyrics.classList.toggle('is-static', !soulFs.synced);
+    soulFs.lyrics.scrollTop = 0;
+  }
+
+  // Audio runs through Web Audio, so the speakers lag the media clock by the context's latency (~70 ms here).
+  function fsHeardTime(t) {
+    const c = audioEngine && audioEngine.ctx;
+    const latency = c && c.state === 'running' ? (c.baseLatency || 0) + (c.outputLatency || 0) : 0;
+    return t - latency;
+  }
+
+  // Per-song timing nudge, for lyrics that are timed against a slightly different upload.
+  const FS_OFFSETS_KEY = 'soulleak_lyrics_offsets';
+  function fsTrackKey(t) {
+    return t ? `${t.artist || ''}::${t.title || ''}`.toLowerCase() : '';
+  }
+  function fsOffsets() {
+    try { return JSON.parse(localStorage.getItem(FS_OFFSETS_KEY) || '{}') || {}; } catch (_) { return {}; }
+  }
+  function fsShowOffset() {
+    const v = soulFs.offset || 0;
+    const label = document.getElementById('soul-fs-sync-value');
+    if (label) label.textContent = `Lyrics ${v > 0 ? '+' : ''}${v.toFixed(2)}s`;
+    document.getElementById('soul-fs-sync')?.classList.toggle('is-set', v !== 0);
+  }
+  function fsNudge(step) {
+    const key = fsTrackKey(state.currentTrack);
+    if (!key) return;
+    const next = Math.round(((soulFs.offset || 0) + step) * 100) / 100;
+    const all = fsOffsets();
+    if (next === 0) delete all[key];
+    else all[key] = next;
+    localStorage.setItem(FS_OFFSETS_KEY, JSON.stringify(all));
+    soulFs.offset = next;
+    soulFs.activeIdx = -2;
+    fsShowOffset();
+  }
+
+  function fsUpdateLyric(t) {
+    if (!soulFs.synced) return;
+    const lines = soulFs.lyricsRef || [];
+    let idx = -1;
+    for (let i = 0; i < lines.length; i++) {
+      if (lines[i] && lines[i].time >= 0 && lines[i].time <= t) idx = i;
+      else if (lines[i] && lines[i].time > t) break;
+    }
+    if (idx === soulFs.activeIdx) return;
+    soulFs.activeIdx = idx;
+    soulFs.lineEls.forEach((line, i) => {
+      line.classList.toggle('is-active', i === idx);
+      line.classList.toggle('is-past', i < idx);
+    });
+    const active = soulFs.lineEls[idx];
+    if (active && Date.now() > soulFs.userScrollUntil) {
+      const target = active.offsetTop - soulFs.lyrics.clientHeight * 0.4 + active.offsetHeight / 2;
+      soulFs.lyrics.scrollTo({ top: Math.max(0, target), behavior: 'smooth' });
+    }
+  }
+
+  function fsDrawWave() {
+    const canvas = soulFs.wave;
+    const w = canvas.clientWidth;
+    const h = canvas.clientHeight;
+    if (!w || !h) return;
+    const dpr = window.devicePixelRatio || 1;
+    if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(h * dpr)) {
+      canvas.width = Math.round(w * dpr);
+      canvas.height = Math.round(h * dpr);
+    }
+    const ctx = canvas.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+
+    let bass = 0;
+    const playing = state.isPlaying && audioEngine && typeof audioEngine.getFrequencyData === 'function';
+    if (playing) {
+      if (!soulFs.freq || (audioEngine.analyserNode && soulFs.freq.length !== audioEngine.analyserNode.frequencyBinCount)) {
+        soulFs.freq = new Uint8Array(audioEngine.analyserNode ? audioEngine.analyserNode.frequencyBinCount : 1024);
+      }
+      audioEngine.getFrequencyData(soulFs.freq);
+    }
+    const bins = soulFs.freq;
+    const n = soulFs.bars.length;
+    const raw = soulFs.raw || (soulFs.raw = new Float32Array(n));
+    for (let i = 0; i < n; i++) {
+      raw[i] = 0;
+      if (playing && bins) {
+        // Log-spaced bins so bass, mids and highs each get a fair share of bars.
+        const lo = Math.floor(Math.pow(bins.length * 0.7, i / n));
+        const hi = Math.max(lo + 1, Math.floor(Math.pow(bins.length * 0.7, (i + 1) / n)));
+        let sum = 0;
+        for (let b = lo; b < hi; b++) sum += bins[b];
+        raw[i] = sum / (hi - lo) / 255;
+        if (i < 6) bass += raw[i];
+      }
+    }
+    // Each bar mixes "shape" (its level against the loudest bar, capped at 60%) with "punch" (how far it jumps
+    // above its own recent average). Steady sound sits mid-height; kicks and hits shoot the bars up.
+    let frameMax = 0;
+    for (let i = 0; i < n; i++) if (raw[i] > frameMax) frameMax = raw[i];
+    soulFs.peak = Math.max(frameMax, (soulFs.peak || 0.3) * 0.997, 0.1);
+    const means = soulFs.means || (soulFs.means = new Float32Array(n));
+    const peaks = soulFs.peaks || (soulFs.peaks = new Float32Array(n));
+    for (let i = 0; i < n; i++) {
+      means[i] = means[i] * 0.92 + raw[i] * 0.08;
+      peaks[i] = Math.max(raw[i], peaks[i] * 0.985);
+      const shape = Math.pow(Math.min(1, Math.max(0, (raw[i] / soulFs.peak - 0.3) / 0.7)), 1.5) * 0.6;
+      const punch = Math.min(1, Math.max(0, (raw[i] - means[i]) / Math.max(0.04, peaks[i] - means[i])));
+      const target = Math.min(1, shape + punch * 0.6);
+      const cur = soulFs.bars[i];
+      soulFs.bars[i] = target > cur ? cur + (target - cur) * 0.6 : cur + (target - cur) * 0.14;
+    }
+
+    // A beat is a bass jump well above its recent average; it makes the cover pulse.
+    bass /= 6;
+    if (bass > soulFs.bassAvg * 1.35 && bass > 0.22) soulFs.beat = 1;
+    soulFs.bassAvg = soulFs.bassAvg * 0.94 + bass * 0.06;
+    soulFs.beat *= 0.88;
+    soulFs.root.style.setProperty('--beat', soulFs.beat.toFixed(3));
+
+    const gap = 3;
+    const barW = (w - gap * (n - 1)) / n;
+    const mid = h / 2;
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+    for (let i = 0; i < n; i++) {
+      const v = Math.max(0.04, soulFs.bars[i]);
+      const bh = Math.max(2, v * (h - 4));
+      const x = i * (barW + gap);
+      ctx.globalAlpha = 0.35 + v * 0.65;
+      ctx.beginPath();
+      ctx.roundRect(x, mid - bh / 2, barW, bh, Math.min(barW / 2, 4));
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function fsFrame() {
+    if (!soulFs.open) return;
+    if (state.currentTrack !== soulFs.track) fsSyncTrack();
+    if (state.syncedLyrics !== soulFs.lyricsRef) fsRenderLyrics();
+
+    const audio = el.nativeAudio;
+    const t = audio ? audio.currentTime || 0 : 0;
+    const d = audio && Number.isFinite(audio.duration) ? audio.duration : 0;
+    soulFs.fill.style.transform = `scaleX(${d ? Math.min(1, t / d) : 0})`;
+    const sec = Math.floor(t);
+    if (sec !== soulFs.lastSecond) {
+      soulFs.lastSecond = sec;
+      soulFs.cur.textContent = fsTime(t);
+      soulFs.dur.textContent = fsTime(d);
+    }
+    soulFs.root.classList.toggle('is-playing', !!state.isPlaying);
+    fsUpdateLyric(fsHeardTime(t) - (soulFs.offset || 0));
+    fsDrawWave();
+    soulFs.raf = requestAnimationFrame(fsFrame);
+  }
+
+  function openSoulFullscreen() {
+    if (!soulFs.root || soulFs.open) return;
+    if (!state.currentTrack) {
+      showToast('Play something first', 'info');
+      return;
+    }
+    soulFs.open = true;
+    soulFs.track = null;
+    soulFs.lyricsRef = undefined;
+    soulFs.root.classList.toggle('lite', document.body.classList.contains('perf'));
+    soulFs.root.setAttribute('aria-hidden', 'false');
+    soulFs.root.classList.add('open');
+    if (soulFs.root.requestFullscreen) soulFs.root.requestFullscreen().catch(() => {});
+    cancelAnimationFrame(soulFs.raf);
+    soulFs.raf = requestAnimationFrame(fsFrame);
+  }
+
+  function closeSoulFullscreen() {
+    if (!soulFs.open) return;
+    soulFs.open = false;
+    cancelAnimationFrame(soulFs.raf);
+    soulFs.root.classList.remove('open');
+    soulFs.root.setAttribute('aria-hidden', 'true');
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+  }
+
+  if (soulFs.root) {
+    document.getElementById('btn-soul-fullscreen')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openSoulFullscreen();
+    });
+    document.getElementById('soul-fs-close')?.addEventListener('click', closeSoulFullscreen);
+    // Leaving OS fullscreen with Esc closes the player too.
+    document.addEventListener('fullscreenchange', () => {
+      if (!document.fullscreenElement && soulFs.open) closeSoulFullscreen();
+    });
+    document.addEventListener('keydown', (e) => {
+      if (!soulFs.open) return;
+      // Handled here only, so the app's own Space/Esc shortcuts don't fire a second time.
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        closeSoulFullscreen();
+      } else if (e.key === ' ' && !e.target.closest('input, textarea')) {
+        e.preventDefault();
+        e.stopPropagation();
+        document.getElementById('btn-play-pause')?.click();
+      } else if (e.key === '[' || e.key === ']') {
+        e.preventDefault();
+        e.stopPropagation();
+        fsNudge(e.key === ']' ? 0.25 : -0.25);
+      }
+    }, true);
+    soulFs.root.querySelectorAll('[data-fs]').forEach(btn => {
+      const target = { prev: 'btn-prev', play: 'btn-play-pause', next: 'btn-next' }[btn.dataset.fs];
+      btn.addEventListener('click', () => document.getElementById(target)?.click());
+    });
+    soulFs.bar.addEventListener('click', (e) => {
+      const audio = el.nativeAudio;
+      if (!audio || !Number.isFinite(audio.duration)) return;
+      const r = soulFs.bar.getBoundingClientRect();
+      audio.currentTime = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)) * audio.duration;
+    });
+    document.querySelectorAll('#soul-fs-sync [data-nudge]').forEach(btn => {
+      btn.addEventListener('click', () => fsNudge(Number(btn.dataset.nudge)));
+    });
+    // Scrolling the lyrics yourself pauses auto-follow for a few seconds.
+    soulFs.lyrics.addEventListener('wheel', () => { soulFs.userScrollUntil = Date.now() + 3500; }, { passive: true });
   }
 
   const spotifyHeaders = { 'X-Riff-Token': window.electronAPI?.serverToken || '' };

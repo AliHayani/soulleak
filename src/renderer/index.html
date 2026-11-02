@@ -2824,6 +2824,9 @@
           <img alt="" class="track-artwork" id="playbar-artwork">
           <canvas class="m3c-canvas" id="m3c-canvas"></canvas>
         </div>
+        <button type="button" class="soul-fs-open" id="btn-soul-fullscreen" title="Fullscreen" aria-label="Open fullscreen player">
+          <svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
+        </button>
         <div class="artwork-fallback" id="artwork-fallback">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polygon points="10 8 16 12 10 16 10 8"></polygon></svg>
         </div>
@@ -4314,6 +4317,48 @@
       </div>
     </div>
     <div id="css-editor-host" class="css-editor-host"></div>
+  </div>
+
+  <div class="soul-fs" id="soul-fs" aria-hidden="true">
+    <div class="soul-fs-bg" id="soul-fs-bg"></div>
+    <button type="button" class="soul-fs-close" id="soul-fs-close" title="Exit fullscreen (Esc)" aria-label="Exit fullscreen">
+      <svg viewBox="0 0 24 24"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg>
+    </button>
+    <div class="soul-fs-stage">
+      <section class="soul-fs-player">
+        <div class="soul-fs-art-wrap">
+          <img class="soul-fs-art" id="soul-fs-art" alt="" draggable="false">
+        </div>
+        <canvas class="soul-fs-wave" id="soul-fs-wave" aria-hidden="true"></canvas>
+        <div class="soul-fs-meta">
+          <div class="soul-fs-title" id="soul-fs-title"></div>
+          <div class="soul-fs-artist" id="soul-fs-artist"></div>
+        </div>
+        <div class="soul-fs-progress">
+          <span class="soul-fs-time" id="soul-fs-cur">0:00</span>
+          <div class="soul-fs-bar" id="soul-fs-bar"><div class="soul-fs-fill" id="soul-fs-fill"></div></div>
+          <span class="soul-fs-time" id="soul-fs-dur">0:00</span>
+        </div>
+        <div class="soul-fs-controls">
+          <button type="button" class="soul-fs-btn" data-fs="prev" aria-label="Previous">
+            <svg viewBox="0 0 24 24"><path d="M6 5h2v14H6zM20 6.2v11.6a1 1 0 0 1-1.55.83L10 13a1.2 1.2 0 0 1 0-2l8.45-5.63A1 1 0 0 1 20 6.2Z"/></svg>
+          </button>
+          <button type="button" class="soul-fs-btn soul-fs-play" data-fs="play" id="soul-fs-play" aria-label="Play or pause">
+            <svg class="i-play" viewBox="0 0 24 24"><path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.4-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5Z"/></svg>
+            <svg class="i-pause" viewBox="0 0 24 24"><path d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z"/></svg>
+          </button>
+          <button type="button" class="soul-fs-btn" data-fs="next" aria-label="Next">
+            <svg viewBox="0 0 24 24"><path d="M16 5h2v14h-2zM4 6.2v11.6a1 1 0 0 0 1.55.83L14 13a1.2 1.2 0 0 0 0-2L5.55 5.37A1 1 0 0 0 4 6.2Z"/></svg>
+          </button>
+        </div>
+      </section>
+      <section class="soul-fs-lyrics" id="soul-fs-lyrics" aria-live="off"></section>
+      <div class="soul-fs-sync" id="soul-fs-sync" title="Lyrics timing for this song ([ and ] keys)">
+        <button type="button" data-nudge="-0.25" aria-label="Show lyrics earlier">−</button>
+        <span id="soul-fs-sync-value">Lyrics 0.00s</span>
+        <button type="button" data-nudge="0.25" aria-label="Show lyrics later">+</button>
+      </div>
+    </div>
   </div>
 
   <script src="../../assets/hls.min.js"></script>
