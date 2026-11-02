@@ -1064,7 +1064,7 @@ async function httpGetJson(url, timeoutMs = 6000) {
     try {
       const parsed = new URL(url);
       const mod = parsed.protocol === 'http:' ? http : https;
-      const req = mod.get(url, { family: 4, headers: { 'User-Agent': 'Riff' }, timeout: timeoutMs }, (res) => {
+      const req = mod.get(url, { family: 4, headers: { 'User-Agent': 'Soulleak' }, timeout: timeoutMs }, (res) => {
         if (res.statusCode < 200 || res.statusCode >= 300) {
           res.resume();
           return resolve(null);
@@ -7080,7 +7080,7 @@ async function getSpotifyAccessToken(forceRefresh = false) {
       spotifyAuthError = '';
       if (typeof result.data.refresh_token === 'string' && result.data.refresh_token) {
         spotifyAuth.refreshToken = result.data.refresh_token;
-        if (!saveSpotifyAuth()) spotifyAuthError = 'Spotify login could not be saved securely; reconnect after restarting Riff.';
+        if (!saveSpotifyAuth()) spotifyAuthError = 'Spotify login could not be saved securely; reconnect after restarting Soulleak.';
       }
       return spotifyAuth.token;
     })().finally(() => { spotifyRefreshPromise = null; });
@@ -7374,13 +7374,13 @@ function queryGoogleTranslateFallback(text, to) {
 
 async function callDeepLTranslate(text, toLang, apiKey = '') {
   if (!text || typeof text !== 'string') return null;
-  const safeText = text.replace(/\bRiff\b/g, '__RIFF_BRAND__');
+  const safeText = text.replace(/\bSoulleak\b/g, '__RIFF_BRAND__');
   if (!DEEPL_LANG_MAP[toLang]) {
     const googleResult = await queryGoogleTranslateFallback(safeText, toLang);
     const gArr = Array.isArray(googleResult) ? googleResult : (typeof googleResult === 'string' ? googleResult.split('\n') : null);
     if (gArr) {
       return gArr
-        .map(str => str.replace(/__RIFF_BRAND__/g, 'Riff').replace(/__RIFF_APP__/g, 'Riff'))
+        .map(str => str.replace(/__RIFF_BRAND__/g, 'Soulleak').replace(/__RIFF_APP__/g, 'Soulleak'))
         .filter(str => str && !str.includes('linux.do') && !/https?:\/\//i.test(str));
     }
     return null;
@@ -7406,7 +7406,7 @@ async function callDeepLTranslate(text, toLang, apiKey = '') {
   const resArr = Array.isArray(results) ? results : (typeof results === 'string' ? results.split('\n') : null);
   if (resArr) {
     return resArr
-      .map(str => str.replace(/__RIFF_BRAND__/g, 'Riff').replace(/__RIFF_APP__/g, 'Riff'))
+      .map(str => str.replace(/__RIFF_BRAND__/g, 'Soulleak').replace(/__RIFF_APP__/g, 'Soulleak'))
       .filter(str => str && !str.includes('linux.do') && !/https?:\/\//i.test(str));
   }
   return null;
@@ -7932,8 +7932,8 @@ function callLastFmApi(params, secret, method = 'POST') {
       hostname: 'ws.audioscrobbler.com',
       path: reqPath,
       method,
-      headers: isGet ? { 'User-Agent': 'Riff-Desktop-Player/43.0' } : {
-        'User-Agent': 'Riff-Desktop-Player/43.0',
+      headers: isGet ? { 'User-Agent': 'Soulleak-Desktop-Player/1.0' } : {
+        'User-Agent': 'Soulleak-Desktop-Player/1.0',
         'Content-Type': 'application/x-www-form-urlencoded',
         'Content-Length': Buffer.byteLength(bodyData)
       },
@@ -8417,7 +8417,7 @@ async function requestHandler(req, res) {
       spotifyAuthError = errParam === 'access_denied' ? 'Spotify authorization was denied.' : 'Spotify login failed. Check the Client ID, allowed account and redirect URI.';
       spotifyAuth.state = '';
       res.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8' });
-      return res.end('<!DOCTYPE html><html><body><p>Spotify login failed. Return to Riff for details.</p></body></html>');
+      return res.end('<!DOCTYPE html><html><body><p>Spotify login failed. Return to Soulleak for details.</p></body></html>');
     }
     const redirectUri = getSpotifyRedirectUri();
     try {
@@ -8425,7 +8425,7 @@ async function requestHandler(req, res) {
       const tokenResult = await requestSpotifyToken({ grant_type: 'authorization_code', code, redirect_uri: redirectUri, client_id: spotifyAuth.clientId, code_verifier: spotifyAuth.verifier });
       if (spotifyAuth !== session) {
         res.writeHead(409, { 'Content-Type': 'text/html; charset=utf-8' });
-        return res.end('<!DOCTYPE html><html><body><p>Spotify login session changed. Return to Riff and try again.</p></body></html>');
+        return res.end('<!DOCTYPE html><html><body><p>Spotify login session changed. Return to Soulleak and try again.</p></body></html>');
       }
       spotifyAuth.state = '';
       if (tokenResult.status >= 200 && tokenResult.status < 300 && typeof tokenResult.data?.access_token === 'string' && tokenResult.data.access_token) {
@@ -8433,20 +8433,20 @@ async function requestHandler(req, res) {
         spotifyAuth.refreshToken = typeof tokenResult.data.refresh_token === 'string' ? tokenResult.data.refresh_token : '';
         spotifyAuth.expiresAt = Date.now() + (Number.isFinite(tokenResult.data.expires_in) && tokenResult.data.expires_in > 0 ? tokenResult.data.expires_in : 3600) * 1000;
         if (!spotifyAuth.refreshToken) spotifyAuthError = 'Spotify did not provide a refresh token; reconnect when this session expires.';
-        else if (!saveSpotifyAuth()) spotifyAuthError = 'Spotify login could not be saved securely; reconnect after restarting Riff.';
+        else if (!saveSpotifyAuth()) spotifyAuthError = 'Spotify login could not be saved securely; reconnect after restarting Soulleak.';
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-        return res.end('<!DOCTYPE html><html><body><p>Riff is connected to Spotify. You can close this tab.</p></body></html>');
+        return res.end('<!DOCTYPE html><html><body><p>Soulleak is connected to Spotify. You can close this tab.</p></body></html>');
       } else {
         const reason = tokenResult.data?.error_description || tokenResult.data?.error || `HTTP ${tokenResult.status}`;
         spotifyAuthError = `Spotify token exchange failed: ${reason}`;
         res.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8' });
-        return res.end('<!DOCTYPE html><html><body><p>Spotify login failed. Return to Riff for details.</p></body></html>');
+        return res.end('<!DOCTYPE html><html><body><p>Spotify login failed. Return to Soulleak for details.</p></body></html>');
       }
     } catch (err) {
       spotifyAuth.state = '';
       spotifyAuthError = `Could not reach Spotify: ${err.message}`;
       res.writeHead(500, { 'Content-Type': 'text/html; charset=utf-8' });
-      return res.end('<!DOCTYPE html><html><body><p>Spotify login failed. Return to Riff for details.</p></body></html>');
+      return res.end('<!DOCTYPE html><html><body><p>Spotify login failed. Return to Soulleak for details.</p></body></html>');
     }
   }
 

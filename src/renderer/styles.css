@@ -234,7 +234,7 @@ button:not(.btn-play-pause):not(.nav-item):not(.settings-nav-btn):active, .chip-
   transition: height 220ms cubic-bezier(0.2, 0, 0, 1), opacity 180ms ease;
 }
 .titlebar .app-logo { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); display: flex; align-items: center; justify-content: center; pointer-events: auto; cursor: pointer; -webkit-app-region: no-drag; }
-.titlebar-riff-icon { width: 20px; height: 20px; display: block; background-color: var(--md-sys-color-primary); -webkit-mask: url('../../assets/riff.svg') no-repeat center / contain; mask: url('../../assets/riff.svg') no-repeat center / contain; }
+.titlebar-riff-icon { width: 20px; height: 20px; display: block; background-color: var(--md-sys-color-primary); -webkit-mask: url('../../assets/soulleak.svg') no-repeat center / contain; mask: url('../../assets/soulleak.svg') no-repeat center / contain; }
 body.hide-titlebar::before {
   content: "";
   position: fixed;
@@ -9526,8 +9526,8 @@ body.hide-explicit-badges .explicit-badge {
   width: 46px;
   height: 46px;
   background-color: #36284E;
-  -webkit-mask: url('../../assets/riff.svg') no-repeat center / contain;
-  mask: url('../../assets/riff.svg') no-repeat center / contain;
+  -webkit-mask: url('../../assets/soulleak.svg') no-repeat center / contain;
+  mask: url('../../assets/soulleak.svg') no-repeat center / contain;
   transform: rotate(-45deg);
 }
 .riff-hero-floats {
@@ -9539,8 +9539,8 @@ body.hide-explicit-badges .explicit-badge {
 .riff-float-logo {
   position: absolute;
   background-color: #492E7D;
-  -webkit-mask: url('../../assets/riff.svg') no-repeat center / contain;
-  mask: url('../../assets/riff.svg') no-repeat center / contain;
+  -webkit-mask: url('../../assets/soulleak.svg') no-repeat center / contain;
+  mask: url('../../assets/soulleak.svg') no-repeat center / contain;
   opacity: 0.85;
 }
 .riff-float-logo.f1 {
@@ -11305,8 +11305,8 @@ body.sidebar-expanded .sb-home-banner-fx {
   position: absolute;
   display: block;
   background-color: rgba(255, 255, 255, 0.22);
-  -webkit-mask: url('../../assets/riff.svg') no-repeat center / contain;
-  mask: url('../../assets/riff.svg') no-repeat center / contain;
+  -webkit-mask: url('../../assets/soulleak.svg') no-repeat center / contain;
+  mask: url('../../assets/soulleak.svg') no-repeat center / contain;
   pointer-events: none !important;
   transform: none !important;
   animation: none !important;
@@ -11860,8 +11860,8 @@ body.play-btn-nobg .btn-play-pause .play-spinner {
   width: 22px;
   height: 22px;
   background-color: rgba(0, 0, 0, 0.28);
-  -webkit-mask: url('../../assets/riff.svg') no-repeat center / contain;
-  mask: url('../../assets/riff.svg') no-repeat center / contain;
+  -webkit-mask: url('../../assets/soulleak.svg') no-repeat center / contain;
+  mask: url('../../assets/soulleak.svg') no-repeat center / contain;
   pointer-events: none;
 }
 .tg-pat-icon.p1  { top: 14%; left: 18%; transform: rotate(-14deg) scale(0.95); opacity: 0.75; }
@@ -12023,8 +12023,8 @@ body.perf .tg-pat-meme.switching {
     height: 22px !important;
     display: block !important;
     background-color: rgba(0, 0, 0, 0.24) !important;
-    -webkit-mask: url('../../assets/riff.svg') no-repeat center / contain !important;
-    mask: url('../../assets/riff.svg') no-repeat center / contain !important;
+    -webkit-mask: url('../../assets/soulleak.svg') no-repeat center / contain !important;
+    mask: url('../../assets/soulleak.svg') no-repeat center / contain !important;
     pointer-events: none !important;
   }
   .tg-pat-icon.p1  { top: 10%; left: 21%; transform: rotate(-14deg) scale(0.95); opacity: 0.72; }
@@ -12213,8 +12213,8 @@ body.perf .tg-pat-meme.switching {
     height: 100% !important;
     display: block !important;
     background-color: #ffffff !important;
-    -webkit-mask: url('../../assets/riff.svg') no-repeat center / contain !important;
-    mask: url('../../assets/riff.svg') no-repeat center / contain !important;
+    -webkit-mask: url('../../assets/soulleak.svg') no-repeat center / contain !important;
+    mask: url('../../assets/soulleak.svg') no-repeat center / contain !important;
   }
   .acc-satellite-btn {
     position: absolute !important;

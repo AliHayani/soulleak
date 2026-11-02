@@ -31,13 +31,23 @@ function initUpdater(getWindow) {
   if (pkg.version) {
     app.setVersion(pkg.version);
   }
-  const releasesUrl = `${pkg.homepage || 'https://github.com/rootscripts/riff'}/releases`;
+  // "owner/repo" on GitHub that publishes Soulleak releases. While it is empty, update checks stay off,
+  // so Soulleak can never download a Riff release as an "update".
+  const updateRepo = String(pkg.updateRepo || '').trim();
+  const releasesUrl = `https://github.com/${updateRepo}/releases`;
+  const latestReleaseApi = `https://api.github.com/repos/${updateRepo}/releases/latest`;
   let manualCheck = false;
   let installNow = false;
   let current = null;
 
   try { ipcMain.removeHandler('get-app-version'); } catch (_) {}
   ipcMain.handle('get-app-version', () => app.getVersion());
+
+  if (!updateRepo) {
+    try { ipcMain.removeHandler('update-check'); } catch (_) {}
+    ipcMain.handle('update-check', () => ({ ok: false, disabled: true }));
+    return;
+  }
 
   const isDev = !app.isPackaged;
   const devConfigFile = path.join(__dirname, '../../dev-app-update.yml');
@@ -50,8 +60,8 @@ function initUpdater(getWindow) {
 
   const checkViaGithubApi = async () => {
     try {
-      const res = await fetch('https://api.github.com/repos/rootscripts/riff/releases/latest', {
-        headers: { 'User-Agent': 'Riff-Player' }
+      const res = await fetch(latestReleaseApi, {
+        headers: { 'User-Agent': 'Soulleak-Player' }
       });
       if (!res.ok) throw new Error('HTTP ' + res.status);
       const json = await res.json();
@@ -92,6 +102,9 @@ function initUpdater(getWindow) {
       const eu = require('electron-updater');
       autoUpdater = eu.autoUpdater;
       if (isDev) autoUpdater.forceDevUpdateConfig = true;
+      // Ignore whatever feed the build baked in and only ever look at Soulleak's own releases.
+      const [owner, repo] = updateRepo.split('/');
+      autoUpdater.setFeedURL({ provider: 'github', owner, repo });
       autoUpdater.autoDownload = false;
       autoUpdater.autoInstallOnAppQuit = false;
 
@@ -108,8 +121,8 @@ function initUpdater(getWindow) {
         let htmlUrl = `${releasesUrl}/tag/v${info.version}`;
 
         try {
-          const res = await fetch('https://api.github.com/repos/rootscripts/riff/releases/latest', {
-            headers: { 'User-Agent': 'Riff-Player' }
+          const res = await fetch(latestReleaseApi, {
+            headers: { 'User-Agent': 'Soulleak-Player' }
           });
           if (res.ok) {
             const json = await res.json();

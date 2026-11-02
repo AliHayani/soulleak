@@ -18,10 +18,11 @@ const {
 } = require('./google-oauth');
 const { fetchYouTubeLibrary } = require('./youtube-data');
 const RFACC_KEY = crypto.createHash('sha256').update('riff-account-key-v1').digest();
-const APP_ID = 'io.github.rootscripts.riff';
+const APP_ID = 'com.soulleak.app';
 const IS_MAC = process.platform === 'darwin';
 
-app.setName('Riff');
+// The name also decides the settings folder (AppData\Roaming\Soulleak), which keeps Soulleak apart from an installed Riff.
+app.setName('Soulleak');
 if (process.platform === 'win32') app.setAppUserModelId(APP_ID);
 
 function encryptAccount(dataObj) {
@@ -384,7 +385,7 @@ function runGUI() {
       minWidth: 800,
       minHeight: 540,
                                    backgroundColor: firstRun ? '#8d5ef2' : '#000000',
-                                   title: 'Riff',
+                                   title: 'Soulleak',
                                    icon: path.join(__dirname, '../../assets', 'icon.png'),
                                    frame: IS_MAC,
                                    titleBarStyle: IS_MAC ? 'hiddenInset' : 'hidden',
@@ -539,7 +540,7 @@ function runGUI() {
     });
 
     ipcMain.handle('get-diagnostics', async () => {
-      const lines = [`Riff ${app.getVersion()}`, `OS ${process.platform} ${process.arch} ${os.release()}`, `Electron ${process.versions.electron} Chromium ${process.versions.chrome} Node ${process.versions.node}`, `Locale ${app.getLocale()}`, `Data ${DATA_DIR}`];
+      const lines = [`Soulleak ${app.getVersion()}`, `OS ${process.platform} ${process.arch} ${os.release()}`, `Electron ${process.versions.electron} Chromium ${process.versions.chrome} Node ${process.versions.node}`, `Locale ${app.getLocale()}`, `Data ${DATA_DIR}`];
       for (const name of ['yt-dlp', 'ffmpeg']) {
         const bin = resolveBinary(name);
         lines.push(`${name}: ${bin || 'NOT FOUND'}`);
@@ -1316,9 +1317,9 @@ function runGUI() {
         try {
           const win = BrowserWindow.fromWebContents(event.sender) || mainWindow;
           const r = await dialog.showSaveDialog(win, {
-            title: 'Export Riff account',
-            defaultPath: 'riff-account.rfacc',
-            filters: [{ name: 'Riff Account (.rfacc)', extensions: ['rfacc'] }]
+            title: 'Export Soulleak account',
+            defaultPath: 'soulleak-account.rfacc',
+            filters: [{ name: 'Soulleak account backup (.rfacc)', extensions: ['rfacc'] }]
           });
           if (r.canceled || !r.filePath) return { canceled: true };
           const buffer = encryptAccount(payload || {});
@@ -1333,9 +1334,9 @@ function runGUI() {
         try {
           const win = BrowserWindow.fromWebContents(event.sender) || mainWindow;
           const r = await dialog.showOpenDialog(win, {
-            title: 'Import Riff account',
+            title: 'Import Soulleak account',
             properties: ['openFile'],
-            filters: [{ name: 'Riff Account (.rfacc)', extensions: ['rfacc'] }]
+            filters: [{ name: 'Soulleak account backup (.rfacc)', extensions: ['rfacc'] }]
           });
           if (r.canceled || !r.filePaths || !r.filePaths.length) return { canceled: true };
           const buffer = await fs.promises.readFile(r.filePaths[0]);
@@ -1791,14 +1792,14 @@ function runGUI() {
               const actual = Buffer.from(returnedState);
               if (actual.length !== expected.length || !crypto.timingSafeEqual(actual, expected)) {
                 res.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8' });
-                res.end('Authorization could not be verified. Return to Riff and try again.');
+                res.end('Authorization could not be verified. Return to Soulleak and try again.');
                 finish(new Error('Google authorization state did not match'));
                 return;
               }
               const providerError = requestUrl.searchParams.get('error');
               if (providerError) {
                 res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
-                res.end('<!doctype html><title>Riff</title><p>Google sign-in was cancelled. You can close this tab and return to Riff.</p>');
+                res.end('<!doctype html><title>Soulleak</title><p>Google sign-in was cancelled. You can close this tab and return to Soulleak.</p>');
                 finish(new Error(providerError === 'access_denied'
                   ? 'Google sign-in was cancelled'
                   : `Google authorization failed: ${providerError}`));
@@ -1807,12 +1808,12 @@ function runGUI() {
               const code = requestUrl.searchParams.get('code');
               if (!code) {
                 res.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8' });
-                res.end('Google did not return an authorization code. Return to Riff and try again.');
+                res.end('Google did not return an authorization code. Return to Soulleak and try again.');
                 finish(new Error('Google did not return an authorization code'));
                 return;
               }
               res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
-              res.end('<!doctype html><title>Riff</title><p>Google account connected. You can close this tab and return to Riff.</p>');
+              res.end('<!doctype html><title>Soulleak</title><p>Google account connected. You can close this tab and return to Soulleak.</p>');
               finish(null, { code });
             };
             server.on('request', onRequest);
@@ -1825,7 +1826,7 @@ function runGUI() {
             codeVerifier
           });
           if (!tokens.refresh_token) {
-            throw new Error('Google did not provide a refresh token. Revoke Riff access in your Google account and try again.');
+            throw new Error('Google did not provide a refresh token. Revoke Soulleak access in your Google account and try again.');
           }
           writeGoogleOAuthData({
             accessToken: tokens.access_token,
@@ -2224,7 +2225,7 @@ function runGUI() {
           let trayIcon = nativeImage.createFromPath(iconPath);
           trayIcon = trayIcon.resize({ width: 22, height: 22 });
           tray = new Tray(trayIcon);
-          tray.setToolTip('Riff');
+          tray.setToolTip('Soulleak');
           const contextMenu = Menu.buildFromTemplate([
             {
               label: 'Show/Hide',

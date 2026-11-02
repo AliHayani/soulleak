@@ -4,20 +4,20 @@ const os = require('os');
 const path = require('path');
 const { execFile } = require('child_process');
 
-const NAME = 'Riff';
-const COMMENT = 'Riff - music player';
-const APP_ID = 'io.github.rootscripts.riff';
+const NAME = 'Soulleak';
+const COMMENT = 'Soulleak - music player';
+const APP_ID = 'com.soulleak.app';
 
 function winShortcutPath() {
   return path.join(app.getPath('appData'), 'Microsoft', 'Windows', 'Start Menu', 'Programs', `${NAME}.lnk`);
 }
 
 function linuxDesktopPath() {
-  return path.join(os.homedir(), '.local', 'share', 'applications', 'riff.desktop');
+  return path.join(os.homedir(), '.local', 'share', 'applications', 'soulleak.desktop');
 }
 
 function linuxIconPath() {
-  return path.join(os.homedir(), '.local', 'share', 'icons', 'hicolor', '512x512', 'apps', 'riff.png');
+  return path.join(os.homedir(), '.local', 'share', 'icons', 'hicolor', '512x512', 'apps', 'soulleak.png');
 }
 
 function getLauncherInfo() {
@@ -82,7 +82,7 @@ function installLinux() {
       try {
         const binDir = path.join(os.homedir(), '.local', 'bin');
         fs.mkdirSync(binDir, { recursive: true });
-        const symlinkPath = path.join(binDir, 'riff-appimage');
+        const symlinkPath = path.join(binDir, 'soulleak-appimage');
         try { fs.unlinkSync(symlinkPath); } catch (_) {}
         fs.symlinkSync(image, symlinkPath);
       } catch (_) {}

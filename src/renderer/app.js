@@ -175,7 +175,7 @@ try { window.electronAPI.storageSaveSync(diskMap); } catch (_) {}
   };
   const safety = setTimeout(finish, 1450);
   try {
-    const res = await fetch('../../assets/riff.svg');
+    const res = await fetch('../../assets/soulleak.svg');
     const svgText = await res.text();
     host.innerHTML = svgText;
     const svg = host.querySelector('svg');
@@ -911,7 +911,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (customArt && isHttpUrl(customArt.cover)) rpcThumb = customArt.cover;
     else if (isHttpUrl(track.thumbnail)) rpcThumb = track.thumbnail;
     else if (isHttpUrl(track.cover)) rpcThumb = track.cover;
-    const shareUrl = buildRiffShareUrl(track, '', '', 500);
+    const shareUrl = buildShareUrl(track);
     const curSec = (el.nativeAudio && Number.isFinite(el.nativeAudio.currentTime)) ? el.nativeAudio.currentTime : 0;
     window.electronAPI.discordRpcUpdate({
       title: track.title || 'Unknown Track',
@@ -991,7 +991,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const rawArtist = (typeof current.artist === 'string' ? current.artist.trim() : '');
       const title = rawTitle || 'Unknown track';
       const artist = rawArtist || 'Unknown artist';
-      const album = current.album || 'Riff';
+      const album = current.album || 'Soulleak';
       const thumb = (typeof getTrackThumbUrl === 'function' ? getTrackThumbUrl(current) : '') || current.thumbnail || current.cover || '';
       const artwork = getMediaArtwork(thumb);
       navigator.mediaSession.metadata = new MediaMetadata({
@@ -4116,36 +4116,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (r) { if (r.title) t.title = r.title; if (r.artist) t.artist = r.artist; }
     return t;
   }
-  function buildRiffShareUrl(track, directStream = '', resolvedUrl = '', maxLen = 0) {
-    if (!track) return 'https://riff.hs.vc/share/';
+  // Shares point at the song's own page (YouTube, SoundCloud, ...), so they work without any Soulleak website.
+  function buildShareUrl(track) {
+    if (!track) return '';
     applyTrackRenames(track);
     const isHttpUrl = (u) => typeof u === 'string' && (u.startsWith('http://') || u.startsWith('https://')) && !u.includes('127.0.0.1');
-    const title = track.title || 'Untitled';
-    const artist = track.artist || '';
     const fallbackYt = (track.id && track.platform !== 'soundcloud' && track.platform !== 'local') ? ('https://www.youtube.com/watch?v=' + track.id) : '';
-    const trackUrl = resolvedUrl || (isHttpUrl(track.url) ? track.url : fallbackYt);
-    const customArt = typeof getTrackArt === 'function' ? getTrackArt(track) : null;
-    const rawThumb = (customArt && isHttpUrl(customArt.cover))
-      ? customArt.cover
-      : (track.thumbnail || track.cover || (typeof getTrackThumbUrl === 'function' ? getTrackThumbUrl(track) : '') || '');
-    const params = new URLSearchParams();
-    params.set('t', 'music');
-    if (title) params.set('n', title);
-    if (artist) params.set('a', artist);
-    if (isHttpUrl(trackUrl)) params.set('url', trackUrl);
-    if (directStream && isHttpUrl(directStream) && !directStream.includes('.m3u8')) params.set('stream', directStream);
-    if (isHttpUrl(rawThumb)) params.set('img', rawThumb);
-    if (track.duration) params.set('dur', String(Math.round(Number(track.duration))));
-    let full = 'https://riff.hs.vc/share/?' + params.toString();
-    if (maxLen > 0 && full.length > maxLen) {
-      params.delete('stream');
-      full = 'https://riff.hs.vc/share/?' + params.toString();
-    }
-    if (maxLen > 0 && full.length > maxLen) {
-      params.delete('img');
-      full = 'https://riff.hs.vc/share/?' + params.toString();
-    }
-    return maxLen > 0 ? full.slice(0, maxLen) : full;
+    const trackUrl = isHttpUrl(track.url) ? track.url : fallbackYt;
+    if (trackUrl) return trackUrl;
+    const query = [track.artist, track.title].filter(Boolean).join(' ');
+    return query ? 'https://music.youtube.com/search?q=' + encodeURIComponent(query) : '';
   }
 
   let crossfadeTriggered = false;
@@ -5693,10 +5673,10 @@ document.addEventListener('DOMContentLoaded', async () => {
       'Display name': 'Отображаемое имя',
       'Reset avatar': 'Сбросить аватар',
       'Account backup (.rfacc)': 'Резервная копия аккаунта (.rfacc)',
-      'Export Riff account (.rfacc)': 'Экспорт аккаунта Riff (.rfacc)',
-      'Import Riff account (.rfacc)': 'Импорт аккаунта Riff (.rfacc)',
+      'Export Soulleak account (.rfacc)': 'Экспорт аккаунта Soulleak (.rfacc)',
+      'Import Soulleak account (.rfacc)': 'Импорт аккаунта Soulleak (.rfacc)',
       'Save your profile, playlists, favorites, history, and settings to a file': 'Сохраните профиль, плейлисты, избранное, историю и настройки в файл',
-      'Restore your entire Riff account from a .rfacc backup file': 'Восстановите весь аккаунт Riff из файла резервной копии .rfacc',
+      'Restore your entire Soulleak account from a .rfacc backup file': 'Восстановите весь аккаунт Soulleak из файла резервной копии .rfacc',
       'Connected services & integrations': 'Подключённые сервисы и интеграции',
       'Manage Spotify, YouTube, Last.fm, Yandex Music, and Discord RPC': 'Управление Spotify, YouTube, Last.fm, Яндекс Музыкой и Discord RPC',
       'Open Integrations': 'Открыть интеграции',
@@ -5856,10 +5836,10 @@ document.addEventListener('DOMContentLoaded', async () => {
       'Display name': 'Імʼя користувача',
       'Reset avatar': 'Скинути аватар',
       'Account backup (.rfacc)': 'Резервна копія акаунту (.rfacc)',
-      'Export Riff account (.rfacc)': 'Експорт акаунту Riff (.rfacc)',
-      'Import Riff account (.rfacc)': 'Імпорт акаунту Riff (.rfacc)',
+      'Export Soulleak account (.rfacc)': 'Експорт акаунту Soulleak (.rfacc)',
+      'Import Soulleak account (.rfacc)': 'Імпорт акаунту Soulleak (.rfacc)',
       'Save your profile, playlists, favorites, history, and settings to a file': 'Збережіть профіль, плейлісти, улюблене, історію та налаштування у файл',
-      'Restore your entire Riff account from a .rfacc backup file': 'Відновіть увесь акаунт Riff з файлу резервної копії .rfacc',
+      'Restore your entire Soulleak account from a .rfacc backup file': 'Відновіть увесь акаунт Soulleak з файлу резервної копії .rfacc',
       'Connected services & integrations': 'Підключені сервіси та інтеграції',
       'Manage Spotify, YouTube, Last.fm, Yandex Music, and Discord RPC': 'Керування Spotify, YouTube, Last.fm, Яндекс Музикою та Discord RPC',
       'Open Integrations': 'Відкрити інтеграції',
@@ -10485,22 +10465,6 @@ document.addEventListener('DOMContentLoaded', async () => {
       setTimeout(() => { if (toast.parentNode) toast.remove(); }, 180);
     };
   }
-  async function resolveFullTrackStreamForShare(track) {
-    if (!track) return '';
-    const port = state.serverPort || 38472;
-    try {
-      const streamInfoUrl = `http://127.0.0.1:${port}/api/stream-info?url=${encodeURIComponent(track.url || '')}&id=${encodeURIComponent(track.id || '')}&platform=${encodeURIComponent(track.platform || state.platform || 'youtube')}&title=${encodeURIComponent(track.title || '')}&artist=${encodeURIComponent(track.artist || '')}&duration=${encodeURIComponent(track.duration || 0)}&forShare=1`;
-      const ctrl = new AbortController();
-      const timer = setTimeout(() => ctrl.abort(), 4500);
-      const response = await fetch(streamInfoUrl, { signal: ctrl.signal });
-      clearTimeout(timer);
-      const data = await response.json();
-      if (data && data.success && data.streamUrl && !data.streamUrl.includes('.m3u8')) {
-        return data.streamUrl;
-      }
-    } catch (_) {}
-    return '';
-  }
   async function executeCopyShareLink(track) {
     if (isShareInProgress) return;
     if (!track) {
@@ -10510,11 +10474,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     isShareInProgress = true;
     const hideSpinner = showShareSpinnerToast();
     try {
-      let directStream = '';
-      if ((track.url || track.id) && track.platform !== 'local') {
-        directStream = await resolveFullTrackStreamForShare(track);
-      }
-      const shareUrl = buildRiffShareUrl(track, directStream, '', 0);
+      const shareUrl = buildShareUrl(track);
+      if (!shareUrl) throw new Error('No link for this track');
       await navigator.clipboard.writeText(shareUrl);
       showToast('Share link copied to clipboard!', 'success');
     } catch (e) {
@@ -10821,7 +10782,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       items.push({
         id: 'remove-local',
         danger: true,
-        label: 'Remove from Riff',
+        label: 'Remove from Soulleak',
         icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>',
         action: () => {
           removeTracksFromLocalLibrary([track]);
@@ -16572,29 +16533,25 @@ function bindCoverHoldZoom(wrapEl) {
     });
   }
 
+  const DEFAULT_APP_ICON = 'soulleak-lilac.svg';
   const RIFF_APP_ICONS = [
-    { id: '01-default.svg', label: 'Default' },
-    { id: '02-editor.svg', label: 'Editor' },
-    { id: '03-orbit.svg', label: 'Orbit' },
-    { id: '04-vinyl.svg', label: 'Vinyl' },
-    { id: '06-cosmos.svg', label: 'Cosmos' },
-    { id: '07-aurora.svg', label: 'Aurora' },
-    { id: '08-sunset.svg', label: 'Sunset' },
-    { id: '09-amethyst.svg', label: 'Amethyst' },
-    { id: '10-y2k-disc.svg', label: 'Y2K Disc' },
-    { id: '11-cassette.svg', label: 'Cassette' },
-    { id: '12-invincible.svg', label: 'Invincible' },
-    { id: '13-blueprint.svg', label: 'Blueprint' },
-    { id: '14-galaxy.svg', label: 'Galaxy' },
-    { id: '15-opal.svg', label: 'Opal' },
-    { id: '16-chrome.svg', label: 'Chrome' },
-    { id: '17-eclipse.svg', label: 'Eclipse' },
-    { id: '18-nebula.svg', label: 'Nebula' },
-    { id: '19-horizon.svg', label: 'Horizon' },
-    { id: '20-halloween.svg', label: 'Halloween 2026' }
+    { id: 'soulleak-lilac.svg', label: 'Lilac' },
+    { id: 'soulleak-midnight.svg', label: 'Midnight' },
+    { id: 'soulleak-ink.svg', label: 'Ink' },
+    { id: 'soulleak-sunset.svg', label: 'Sunset' },
+    { id: 'soulleak-aurora.svg', label: 'Aurora' },
+    { id: 'soulleak-ocean.svg', label: 'Ocean' },
+    { id: 'soulleak-blurple.svg', label: 'Blurple' },
+    { id: 'soulleak-chrome.svg', label: 'Chrome' },
+    { id: 'soulleak-ember.svg', label: 'Ember' }
   ];
+  // Riff's icon files ("02-editor.svg" and friends) are gone; a saved choice from a Riff backup falls back to the default.
+  function savedAppIcon() {
+    const saved = localStorage.getItem('riff_app_icon') || '';
+    return /^\d\d-[\w-]+\.svg$/.test(saved) ? DEFAULT_APP_ICON : (saved || DEFAULT_APP_ICON);
+  }
   function resolveAppIconSrc(val) {
-    if (!val) return '../../assets/02-editor.svg';
+    if (!val) return '../../assets/' + DEFAULT_APP_ICON;
     if (val.startsWith('file:') || val.startsWith('http') || val.startsWith('data:')) return val;
     return '../../assets/' + val.replace(/^.*assets\//, '');
   }
@@ -16649,7 +16606,7 @@ function bindCoverHoldZoom(wrapEl) {
     img.src = imgSrc;
   }
   function applyHomeAppIcon(val) {
-    const chosen = val || localStorage.getItem('riff_app_icon') || '02-editor.svg';
+    const chosen = val || savedAppIcon();
     localStorage.setItem('riff_app_icon', chosen);
     const homeImg = document.getElementById('nav-home-app-icon');
     if (homeImg) homeImg.src = resolveAppIconSrc(chosen);
@@ -16663,7 +16620,7 @@ function bindCoverHoldZoom(wrapEl) {
   }
   function initAppIconPicker() {
     const grid = document.getElementById('app-icon-picker-grid');
-    const saved = localStorage.getItem('riff_app_icon') || '02-editor.svg';
+    const saved = savedAppIcon();
     if (grid) {
       grid.innerHTML = '';
       RIFF_APP_ICONS.forEach(item => {
@@ -17928,8 +17885,9 @@ function bindCoverHoldZoom(wrapEl) {
     if (loadedPlugins.has(p.file)) return;
     try {
       const api = createPluginApi(p);
-      const fn = new Function('Riff', 'plugin', `${p.code}\n//# sourceURL=riff-plugin-${p.file}`);
-      const result = fn(api, api.plugin);
+      // Plugins see the API as `Soulleak`; `Riff` stays as an alias so plugins written for Riff keep working.
+      const fn = new Function('Soulleak', 'Riff', 'plugin', `${p.code}\n//# sourceURL=soulleak-plugin-${p.file}`);
+      const result = fn(api, api, api.plugin);
       loadedPlugins.set(p.file, { stop: result && typeof result.stop === 'function' ? result.stop : null });
     } catch (e) { reportPluginError(p.file, e); }
   }
@@ -17941,7 +17899,7 @@ function bindCoverHoldZoom(wrapEl) {
     document.querySelectorAll(`style[data-plugin="${p.file}"]`).forEach((n) => n.remove());
     const hadStop = !!(entry && entry.stop);
     loadedPlugins.delete(p.file);
-    if (!silent && !hadStop) showToast(`Restart Riff to fully unload "${p.name}"`, 'info');
+    if (!silent && !hadStop) showToast(`Restart Soulleak to fully unload "${p.name}"`, 'info');
   }
   let pluginsCache = [];
   function renderPluginCards() {
@@ -18220,7 +18178,6 @@ function bindCoverHoldZoom(wrapEl) {
     if (d.toggles) {
       setSwitch(document.getElementById('btn-show-local'), d.toggles.riff_show_local);
       setSwitch(document.getElementById('btn-search-artists'), d.toggles.riff_search_artists);
-      setSwitch(document.getElementById('btn-no-hand-cursor'), d.toggles.riff_no_hand_cursor);
       setSwitch(document.getElementById('btn-perf-mode'), d.toggles.riff_perf_mode);
       if (d.toggles.riff_custom_bg_enabled && d.background) {
         localStorage.setItem('riff_bg_url', d.background);
@@ -18229,17 +18186,36 @@ function bindCoverHoldZoom(wrapEl) {
       }
     }
     if (d.discord !== undefined) setSwitch(document.getElementById('btn-discord-rpc'), d.discord);
-    if (d.spotify && d.spotify.url) {
-      const btnOpen = document.getElementById('btn-open-spotify-import');
-      if (btnOpen) btnOpen.click();
+    if (d.import && d.import.url) runWelcomeImport(d.import);
+    showToast('Welcome to Soulleak!', 'info');
+  }
+  function runWelcomeImport(imp) {
+    if (imp.source === 'spotify') {
+      document.getElementById('btn-open-spotify-import')?.click();
+      if (imp.kind === 'likes') {
+        // Liked Songs need a Spotify login or a data export, so stop on the Log in tab.
+        document.querySelector('#sp-modes button[data-mode="login"]')?.click();
+        return;
+      }
       const urlInput = document.getElementById('spotify-import-url');
-      if (urlInput) urlInput.value = d.spotify.url;
+      if (urlInput) urlInput.value = imp.url;
       const targetInput = document.getElementById('spotify-import-target');
       if (targetInput) targetInput.value = 'new';
-      const btnConfirm = document.getElementById('btn-confirm-spotify-import');
-      if (btnConfirm) btnConfirm.click();
+      document.getElementById('btn-confirm-spotify-import')?.click();
+      return;
     }
-    showToast('Welcome to Riff!', 'info');
+    const openBtnId = { youtube: 'btn-open-link-import', ytmusic: 'btn-open-ytm-import', soundcloud: 'btn-open-sc-import' }[imp.source];
+    const btnOpen = openBtnId ? document.getElementById(openBtnId) : null;
+    if (!btnOpen) return;
+    btnOpen.click();
+    if (imp.kind === 'likes' && imp.source !== 'soundcloud') {
+      // YouTube likes are private; the Log in tab signs in with Google and imports them.
+      document.getElementById('link-mode-login')?.click();
+      return;
+    }
+    const urlInput = document.getElementById('link-import-url');
+    if (urlInput) urlInput.value = imp.url;
+    document.getElementById('btn-confirm-link-import')?.click();
   }
   if (window.electronAPI && window.electronAPI.onWelcomeResult) window.electronAPI.onWelcomeResult((d) => applyWelcomeResult(d));
 
@@ -19029,7 +19005,7 @@ function bindCoverHoldZoom(wrapEl) {
   (function initUpdateUI() {
     const api = window.electronAPI;
     const $ = (id) => document.getElementById(id);
-    let currentAppVersion = '44.1.1';
+    let currentAppVersion = '1.0.0';
     if (api && api.getAppVersion) {
       api.getAppVersion().then((v) => {
         if (v) {
@@ -19050,8 +19026,24 @@ function bindCoverHoldZoom(wrapEl) {
     const originalBtnHtml = btn ? btn.innerHTML : 'Check for updates';
     let manualUpdateCheck = false;
     let checkTimeoutId = null;
-    let fallbackReleaseUrl = 'https://github.com/rootscripts/riff/releases/latest';
+    let fallbackReleaseUrl = '';
     let canNativeInstall = false;
+
+    // Same source as the main process: package.json "updateRepo". Empty means updates are off.
+    let updateRepoPromise = null;
+    function getUpdateRepo() {
+      if (!updateRepoPromise) {
+        updateRepoPromise = fetch('../../package.json')
+          .then(r => r.json())
+          .then(pkg => String(pkg.updateRepo || '').trim())
+          .catch(() => '');
+      }
+      return updateRepoPromise;
+    }
+
+    function showUpdatesOffToast() {
+      showToast("Updates aren't set up for Soulleak yet", 'info');
+    }
 
     let latestUpdateInfo = null;
     let isUpdateDownloaded = false;
@@ -19111,7 +19103,7 @@ function bindCoverHoldZoom(wrapEl) {
       if (!manualUpdateCheck && rawVer && ignoredVer === rawVer) return;
 
       const displayVer = rawVer.endsWith('.0.0') ? ('v' + rawVer.slice(0, -4)) : (rawVer.endsWith('.0') ? ('v' + rawVer.slice(0, -2)) : ('v' + rawVer));
-      if (verEl) verEl.textContent = displayVer || 'v44.1.1';
+      if (verEl) verEl.textContent = displayVer || '';
       if (timeEl) timeEl.textContent = formatRelativeReleaseTime(info?.publishedAt || info?.releaseDate || '');
 
       const { cleanText, bannerUrl } = parseGithubReleaseBodyAndBanner(info?.releaseNotes || '');
@@ -19172,13 +19164,19 @@ function bindCoverHoldZoom(wrapEl) {
           showToast('Could not check for updates', 'error');
           return;
         }
-        const res = await fetch('https://api.github.com/repos/rootscripts/riff/releases/latest', {
-          headers: { 'User-Agent': 'Riff-Player' }
+        const repo = await getUpdateRepo();
+        if (!repo) {
+          restoreButton();
+          showUpdatesOffToast();
+          return;
+        }
+        const res = await fetch(`https://api.github.com/repos/${repo}/releases/latest`, {
+          headers: { 'User-Agent': 'Soulleak-Player' }
         });
         if (!res.ok) throw new Error('HTTP ' + res.status);
         const json = await res.json();
         const latestVersion = (json.tag_name || '').replace(/^v/i, '');
-        fallbackReleaseUrl = json.html_url || 'https://github.com/rootscripts/riff/releases/latest';
+        fallbackReleaseUrl = json.html_url || `https://github.com/${repo}/releases/latest`;
         if (isNewerVersion(latestVersion, currentAppVersion)) {
           latestUpdateInfo = {
             version: latestVersion,
@@ -19191,7 +19189,7 @@ function bindCoverHoldZoom(wrapEl) {
           restoreButton();
         } else {
           restoreButton();
-          showToast('You are using the latest version of Riff!', 'success');
+          showToast('You are using the latest version of Soulleak!', 'success');
         }
       } catch (err) {
         restoreButton();
@@ -19219,7 +19217,10 @@ function bindCoverHoldZoom(wrapEl) {
 
         try {
           const r = await api.checkForUpdates();
-          if (r && r.ok === false) {
+          if (r && r.disabled) {
+            restoreButton();
+            showUpdatesOffToast();
+          } else if (r && r.ok === false) {
             if (checkTimeoutId) clearTimeout(checkTimeoutId);
             checkDirectFromRenderer();
           }
@@ -19241,9 +19242,10 @@ function bindCoverHoldZoom(wrapEl) {
 
         if (!hasImg || !hasPublishedAt) {
           try {
-            const res = await fetch('https://api.github.com/repos/rootscripts/riff/releases/latest', {
-              headers: { 'User-Agent': 'Riff-Player' }
-            });
+            const repo = await getUpdateRepo();
+            const res = repo ? await fetch(`https://api.github.com/repos/${repo}/releases/latest`, {
+              headers: { 'User-Agent': 'Soulleak-Player' }
+            }) : { ok: false };
             if (res.ok) {
               const gh = await res.json();
               if (gh.body) latestUpdateInfo.releaseNotes = gh.body;
@@ -19291,7 +19293,7 @@ function bindCoverHoldZoom(wrapEl) {
         const wasManual = manualUpdateCheck;
         restoreButton();
         if (wasManual) {
-          showToast('You are using the latest version of Riff!', 'success');
+          showToast('You are using the latest version of Soulleak!', 'success');
         }
       });
     }
@@ -21948,7 +21950,7 @@ function bindCoverHoldZoom(wrapEl) {
       if (typeof showToast === 'function') showToast('No playlists to export', 'error');
       return;
     }
-    let appVer = '44.1.1';
+    let appVer = '1.0.0';
     try {
       if (window.electronAPI && window.electronAPI.getAppVersion) {
         const v = await window.electronAPI.getAppVersion();
@@ -21957,7 +21959,7 @@ function bindCoverHoldZoom(wrapEl) {
     } catch (e) {}
 
     const payload = {
-      app: 'Riff',
+      app: 'Soulleak',
       appVersion: appVer,
       exportedAt: new Date().toISOString(),
       playlists: valid.map(pl => ({
@@ -22128,7 +22130,7 @@ function bindCoverHoldZoom(wrapEl) {
     btnImportJsonPlaylists.addEventListener('click', triggerJsonPlaylistImport);
   }
 
-  function confirmChain({ title = 'Import Riff account', message = 'Importing an account will replace your existing playlists, favorites, custom styles, and settings. Riff will restart immediately.', confirmLabel = 'Import & Restart', seconds = 3 } = {}) {
+  function confirmChain({ title = 'Import Soulleak account', message = 'Importing an account will replace your existing playlists, favorites, custom styles, and settings. Soulleak will restart immediately.', confirmLabel = 'Import & Restart', seconds = 3 } = {}) {
     return new Promise((resolve) => {
       let modal = document.getElementById('confirm-chain-modal');
       if (!modal) {
@@ -22198,7 +22200,7 @@ function bindCoverHoldZoom(wrapEl) {
         }
       } catch (_) {}
       const payload = {
-        app: 'Riff',
+        app: 'Soulleak',
         version: '1.0',
         exportedAt: Date.now(),
         localStorage: dump
@@ -22218,8 +22220,8 @@ function bindCoverHoldZoom(wrapEl) {
   if (btnImportAccount) {
     btnImportAccount.onclick = async () => {
       const confirmed = await confirmChain({
-        title: 'Import Riff account',
-        message: 'Importing an account will replace your existing playlists, favorites, custom styles, and settings. Riff will restart immediately.',
+        title: 'Import Soulleak account',
+        message: 'Importing an account will replace your existing playlists, favorites, custom styles, and settings. Soulleak will restart immediately.',
         confirmLabel: 'Import & Restart',
         seconds: 3
       });
@@ -25918,7 +25920,7 @@ function bindCoverHoldZoom(wrapEl) {
       }
       const move = window.confirm(
         'Move your existing music to the new folder?\n\n' +
-        'OK: move all downloaded and imported files, then restart Riff.\n' +
+        'OK: move all downloaded and imported files, then restart Soulleak.\n' +
         'Cancel: switch to the new folder without moving (files stay in the old one).'
       );
       btnChangeMusicFolder.disabled = true;
@@ -25938,7 +25940,7 @@ function bindCoverHoldZoom(wrapEl) {
         return;
       }
       btnChangeMusicFolder.textContent = 'Restarting...';
-      showToast('Restarting Riff...');
+      showToast('Restarting Soulleak...');
       setTimeout(() => { if (window.electronAPI.restartApp) window.electronAPI.restartApp(); }, 400);
     });
   }

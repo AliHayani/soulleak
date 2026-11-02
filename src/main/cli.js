@@ -4,7 +4,7 @@ const http = require('http');
 
 const args = process.argv;
 if (!args.includes('lyrics') && !args.includes('--lyrics')) {
-  console.log('Usage: riff lyrics');
+  console.log('Usage: soulleak lyrics');
   process.exit(0);
 }
 
@@ -99,7 +99,7 @@ function renderWord(rawWord) {
 function startStream() {
   process.stdout.write('\x1b[?25l');
   process.stdout.write('\x1b[2J\x1b[H');
-  console.log('\x1b[90m[Riff CLI] Awaiting real-time lyrics stream...\x1b[0m');
+  console.log('\x1b[90m[Soulleak CLI] Awaiting real-time lyrics stream...\x1b[0m');
 
   const req = http.get(streamUrl(), (res) => {
     let buffer = '';
