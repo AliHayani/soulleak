@@ -1,0 +1,740 @@
+/* Soulleak design layer. Loads after styles.css and only uses the theme's --md-sys-color-* variables,
+   so every theme and custom color keeps working. */
+
+:root {
+  --font-family: 'Instrument Sans', 'Google Sans', system-ui, -apple-system, sans-serif;
+  --sl-display: 'Bricolage Grotesque', 'Instrument Sans', system-ui, sans-serif;
+  --sl-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --sl-ease-in: cubic-bezier(0.5, 0, 0.75, 0);
+  --sl-spring: cubic-bezier(0.34, 1.45, 0.5, 1);
+  --sl-hover: color-mix(in srgb, var(--md-sys-color-on-surface) 6%, transparent);
+  --sl-press: color-mix(in srgb, var(--md-sys-color-on-surface) 10%, transparent);
+  --sl-line: color-mix(in srgb, var(--md-sys-color-on-surface) 12%, transparent);
+}
+
+@keyframes slRise {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes slLiquidRoll {
+  to { transform: translateX(-50%) rotate(360deg); }
+}
+
+@keyframes slShimmer {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
+}
+
+@keyframes slSpin {
+  to { transform: rotate(360deg); }
+}
+
+/* ---------- Soul Search ---------- */
+
+.soul {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 6px 6px 40px;
+}
+
+.soul-hero {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  padding: 34px 36px 26px;
+  border-radius: 30px;
+  background: var(--md-sys-color-surface-container);
+}
+
+/* A large faint drop, the brand mark, sits behind the hero. */
+.soul-hero::after {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  right: -40px;
+  bottom: -120px;
+  width: 320px;
+  height: 400px;
+  background: var(--md-sys-color-primary);
+  opacity: 0.09;
+  -webkit-mask: url('../../assets/soulleak.svg') no-repeat center / contain;
+  mask: url('../../assets/soulleak.svg') no-repeat center / contain;
+  transform: rotate(-14deg);
+  transition: transform 1.2s var(--sl-ease), opacity 0.6s ease;
+}
+
+.soul-hero:hover::after {
+  transform: rotate(-8deg) translateY(-10px);
+  opacity: 0.13;
+}
+
+.soul-kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--md-sys-color-primary);
+}
+
+.soul-kicker svg {
+  width: 10px;
+  height: 13px;
+  fill: currentColor;
+}
+
+.soul-title {
+  margin-top: 12px;
+  font-family: var(--sl-display);
+  font-size: clamp(34px, 4.4vw, 56px);
+  font-weight: 750;
+  line-height: 1;
+  letter-spacing: -0.04em;
+  color: var(--md-sys-color-on-surface);
+}
+
+.soul-sub {
+  margin-top: 12px;
+  max-width: 56ch;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.soul-form {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 760px;
+  margin-top: 22px;
+  padding: 6px 6px 6px 18px;
+  border-radius: 999px;
+  background: var(--md-sys-color-surface-container-highest);
+  box-shadow: inset 0 0 0 2px transparent;
+  transition: box-shadow 0.2s ease, background-color 0.2s ease;
+}
+
+.soul-form:hover { box-shadow: inset 0 0 0 2px var(--sl-line); }
+.soul-form:focus-within { box-shadow: inset 0 0 0 2px var(--md-sys-color-primary); }
+
+.soul-form-icon {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  fill: none;
+  stroke: var(--md-sys-color-on-surface-variant);
+  stroke-width: 2.2;
+  stroke-linecap: round;
+}
+
+#soul-input {
+  flex: 1;
+  min-width: 0;
+  height: 44px;
+  border: 0;
+  outline: none;
+  background: transparent;
+  font-size: 17px;
+  font-weight: 500;
+  color: var(--md-sys-color-on-surface);
+  user-select: text;
+}
+
+#soul-input::placeholder { color: color-mix(in srgb, var(--md-sys-color-on-surface-variant) 70%, transparent); }
+
+/* The rolling-liquid hover fill from the setup screen. */
+.soul-go {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 44px;
+  padding: 0 20px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--md-sys-color-primary);
+  color: var(--md-sys-color-on-primary);
+  font-size: 14.5px;
+  font-weight: 650;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: transform 0.2s var(--sl-ease);
+}
+
+/* ::after is taken: styles.css uses it on every button as an enlarged click area. */
+.soul-go::before {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  inset: auto;
+  left: 50%;
+  top: 100%;
+  width: max(240%, 260px);
+  aspect-ratio: 1;
+  border-radius: 42%;
+  background: color-mix(in srgb, var(--md-sys-color-on-primary) 18%, var(--md-sys-color-primary));
+  transform: translateX(-50%);
+  transition: top 0.6s var(--sl-ease);
+  animation: slLiquidRoll 5s linear infinite paused;
+}
+
+.soul-go:hover::before { top: -45%; animation-play-state: running; }
+.soul-go:active { transform: scale(0.96); }
+
+.soul-go svg {
+  width: 18px;
+  height: 18px;
+  fill: currentColor;
+  transition: transform 0.35s var(--sl-spring);
+}
+
+.soul-go:hover svg { transform: translateX(4px); }
+
+/* Recent moods: slides open under the field while you are typing in it. */
+.soul-history {
+  display: grid;
+  grid-template-rows: 0fr;
+  max-width: 760px;
+  margin-top: 0;
+  opacity: 0;
+  transition: grid-template-rows 0.35s var(--sl-ease), margin-top 0.35s var(--sl-ease), opacity 0.2s ease;
+}
+
+.soul-history.open {
+  grid-template-rows: 1fr;
+  margin-top: 10px;
+  opacity: 1;
+}
+
+.soul-history-inner {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.soul-history-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 2px 6px 6px 16px;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.soul-history-clear {
+  padding: 4px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--md-sys-color-primary);
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.soul-history-clear:hover { background: var(--sl-hover); }
+
+.soul-history-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 42px;
+  padding: 0 6px 0 16px;
+  border-radius: 14px;
+  font-size: 14.5px;
+  font-weight: 500;
+  color: var(--md-sys-color-on-surface);
+  cursor: pointer;
+  transition: background-color 0.15s ease, padding-left 0.25s var(--sl-ease);
+}
+
+.soul-history-item > svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  fill: none;
+  stroke: var(--md-sys-color-on-surface-variant);
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.soul-history-item > span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.soul-history-item:hover,
+.soul-history-item.is-active {
+  padding-left: 20px;
+  background: var(--sl-hover);
+}
+
+.soul-history-remove {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: var(--md-sys-color-on-surface-variant);
+  opacity: 0;
+  cursor: pointer;
+  transition: opacity 0.15s ease, background-color 0.15s ease, color 0.15s ease;
+}
+
+.soul-history-remove svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.4;
+  stroke-linecap: round;
+}
+
+.soul-history-item:hover .soul-history-remove,
+.soul-history-item.is-active .soul-history-remove { opacity: 1; }
+
+.soul-history-remove:hover {
+  background: var(--sl-press);
+  color: var(--md-sys-color-on-surface);
+}
+
+.soul-status {
+  min-height: 20px;
+  margin: 22px 4px 14px;
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.soul-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(188px, 1fr));
+  gap: 14px;
+}
+
+.soul-card {
+  position: relative;
+  padding: 10px 10px 12px;
+  border-radius: 22px;
+  cursor: pointer;
+  outline: none;
+  animation: slRise 0.5s var(--sl-ease) both;
+  animation-delay: calc(var(--i, 0) * 35ms);
+  transition: background-color 0.25s ease, transform 0.4s var(--sl-spring);
+}
+
+.soul-card:hover,
+.soul-card:focus-visible {
+  background: var(--md-sys-color-surface-container-high);
+  transform: translateY(-4px);
+}
+
+.soul-card:focus-visible { box-shadow: inset 0 0 0 2px var(--md-sys-color-primary); }
+
+.soul-art {
+  position: relative;
+  overflow: hidden;
+  aspect-ratio: 1;
+  border-radius: 16px;
+  background:
+    radial-gradient(circle at 30% 25%, color-mix(in srgb, var(--md-sys-color-primary) 45%, transparent), transparent 60%),
+    var(--md-sys-color-surface-container-highest);
+}
+
+.soul-art img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.6s var(--sl-ease), filter 0.4s ease;
+}
+
+.soul-card:hover .soul-art img { transform: scale(1.06); }
+
+.soul-src {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 22px;
+  padding: 0 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(6px);
+}
+
+.soul-src::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--src-color, #fff);
+}
+
+.soul-src--youtube { --src-color: #ff0033; }
+.soul-src--soundcloud { --src-color: #ff5500; }
+.soul-src--spotify { --src-color: #1ed760; }
+
+.soul-play {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--md-sys-color-primary);
+  color: var(--md-sys-color-on-primary);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
+  opacity: 0;
+  transform: translateY(12px) scale(0.85);
+  cursor: pointer;
+  transition: opacity 0.2s ease, transform 0.4s var(--sl-spring);
+}
+
+.soul-play svg {
+  width: 20px;
+  height: 20px;
+  fill: currentColor;
+  margin-left: 2px;
+}
+
+.soul-card:hover .soul-play,
+.soul-card:focus-visible .soul-play {
+  opacity: 1;
+  transform: none;
+}
+
+.soul-play:hover { transform: scale(1.08) !important; }
+
+.soul-meta {
+  padding: 10px 4px 0;
+  min-width: 0;
+}
+
+.soul-name {
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  font-size: 14px;
+  font-weight: 650;
+  line-height: 1.3;
+  color: var(--md-sys-color-on-surface);
+}
+
+.soul-by {
+  margin-top: 4px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 12.5px;
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.soul-save {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  backdrop-filter: blur(6px);
+  opacity: 0;
+  transform: scale(0.8);
+  cursor: pointer;
+  transition: opacity 0.2s ease, transform 0.35s var(--sl-spring), background-color 0.2s ease;
+}
+
+.soul-save svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.4;
+  stroke-linecap: round;
+}
+
+.soul-card:hover .soul-save,
+.soul-card.is-saved .soul-save {
+  opacity: 1;
+  transform: none;
+}
+
+.soul-save:hover {
+  background: var(--md-sys-color-primary);
+  color: var(--md-sys-color-on-primary);
+}
+
+.soul-card.is-saved .soul-save {
+  background: var(--md-sys-color-primary);
+  color: var(--md-sys-color-on-primary);
+}
+
+.soul-card.is-saved .soul-save svg { display: none; }
+.soul-card.is-saved .soul-save::before { content: '✓'; font-size: 15px; font-weight: 700; }
+
+/* Loading a playlist: dim the art and spin a ring over it. */
+.soul-card.is-busy { pointer-events: none; }
+.soul-card.is-busy .soul-art img { filter: brightness(0.45); }
+
+.soul-card.is-busy .soul-art::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 36px;
+  height: 36px;
+  margin: -18px 0 0 -18px;
+  border-radius: 50%;
+  border: 3px solid rgba(255, 255, 255, 0.25);
+  border-top-color: #fff;
+  animation: slSpin 0.8s linear infinite;
+}
+
+.soul-skeleton { cursor: default; }
+.soul-skeleton:hover { background: transparent; transform: none; }
+
+.soul-skeleton .soul-art,
+.soul-skeleton .soul-line {
+  background: linear-gradient(90deg, var(--md-sys-color-surface-container-high) 25%, var(--md-sys-color-surface-container-highest) 50%, var(--md-sys-color-surface-container-high) 75%);
+  background-size: 200% 100%;
+  animation: slShimmer 1.4s linear infinite;
+}
+
+.soul-line {
+  height: 12px;
+  margin-top: 6px;
+  border-radius: 6px;
+}
+
+.soul-line.short { width: 60%; }
+
+/* ---------- Entering Soul Search ---------- */
+
+/* Only the content panel takes part; the rest of the window swaps instantly. */
+html.soul-vt .main-content { view-transition-name: soul-main; }
+html.soul-vt::view-transition-old(root),
+html.soul-vt::view-transition-new(root),
+html.soul-vt::view-transition-group(soul-main) { animation: none; }
+
+/* The page you were on sinks back and blurs while staying visible underneath. */
+html.soul-vt::view-transition-old(soul-main) {
+  animation: soulVtOut 0.75s cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+/* Soul Search pours in as a widening circle from where the button sits. */
+html.soul-vt::view-transition-new(soul-main) {
+  animation: soulVtIn 0.8s cubic-bezier(0.65, 0, 0.15, 1) both;
+}
+
+html.soul-vt.soul-vt-lite::view-transition-old(soul-main) {
+  animation-name: soulVtOutLite;
+}
+
+@keyframes soulVtOut {
+  to { transform: scale(0.94); filter: blur(10px) brightness(0.55); opacity: 0.35; }
+}
+
+@keyframes soulVtOutLite {
+  to { transform: scale(0.95); opacity: 0.3; }
+}
+
+@keyframes soulVtIn {
+  from { clip-path: circle(0px at var(--soul-x, 0px) var(--soul-y, 50%)); }
+  to { clip-path: circle(var(--soul-r, 150%) at var(--soul-x, 0px) var(--soul-y, 50%)); }
+}
+
+/* Then the page settles in: the drop swings into place and the hero rises piece by piece. */
+#view-soul.soul-enter { animation: none !important; }
+#view-soul.soul-enter .soul-hero { animation: soulHeroIn 0.9s var(--sl-ease) both; }
+#view-soul.soul-enter .soul-hero::after { animation: soulDropIn 1.2s var(--sl-spring) 0.1s both; }
+#view-soul.soul-enter .soul-hero > :not(.soul-history) { animation: slRise 0.7s var(--sl-ease) both; }
+#view-soul.soul-enter .soul-hero > :nth-child(1) { animation-delay: 0.16s; }
+#view-soul.soul-enter .soul-hero > :nth-child(2) { animation-delay: 0.22s; }
+#view-soul.soul-enter .soul-hero > :nth-child(3) { animation-delay: 0.28s; }
+#view-soul.soul-enter .soul-hero > :nth-child(4) { animation-delay: 0.34s; }
+#view-soul.soul-enter .soul-status,
+#view-soul.soul-enter .soul-grid { animation: slRise 0.7s var(--sl-ease) 0.4s both; }
+
+@keyframes soulHeroIn {
+  from { transform: translateY(26px) scale(0.98); }
+}
+
+@keyframes soulDropIn {
+  from { transform: rotate(-38deg) translateY(140px) scale(0.6); opacity: 0; }
+}
+
+/* ---------- Sidebar: the Soul Search entry ---------- */
+
+/* Slim rail: a round icon like the other destinations. */
+body:not(.sidebar-expanded):not(.mini) .sidebar-nav #nav-soul { display: flex !important; }
+
+/* Expanded sidebar: a full-width row right under the home banner. */
+body.sidebar-expanded .sidebar-nav #nav-soul {
+  display: flex !important;
+  width: 100% !important;
+  height: 48px !important;
+  min-height: 48px !important;
+  margin: 0 !important;
+  padding: 0 14px 0 7px !important;
+  gap: 11px;
+  justify-content: flex-start !important;
+  border-radius: 16px !important;
+  background: color-mix(in srgb, var(--md-sys-color-on-surface) 6%, transparent) !important;
+  color: var(--md-sys-color-on-surface) !important;
+  transition: background-color 0.2s ease, color 0.2s ease !important;
+}
+
+body.sidebar-expanded .sidebar-nav #nav-soul .nav-indicator {
+  width: 34px !important;
+  height: 34px !important;
+  min-width: 34px;
+  border-radius: 11px !important;
+  background: color-mix(in srgb, var(--md-sys-color-primary) 28%, transparent) !important;
+  color: var(--md-sys-color-primary) !important;
+  transition: transform 0.45s var(--sl-spring), border-radius 0.3s ease !important;
+}
+
+body.sidebar-expanded .sidebar-nav #nav-soul .nav-indicator svg {
+  width: 18px !important;
+  height: 18px !important;
+  min-width: 18px;
+  min-height: 18px;
+}
+
+body.sidebar-expanded .sidebar-nav #nav-soul .nav-item-label {
+  display: block !important;
+  position: static !important;
+  opacity: 1 !important;
+  transform: none !important;
+  font-size: 14px;
+  font-weight: 650;
+  color: inherit !important;
+}
+
+body.sidebar-expanded .sidebar-nav #nav-soul:hover { background: color-mix(in srgb, var(--md-sys-color-on-surface) 11%, transparent) !important; }
+body.sidebar-expanded .sidebar-nav #nav-soul:hover .nav-indicator { transform: rotate(-10deg); border-radius: 50% !important; }
+
+body.sidebar-expanded .sidebar-nav #nav-soul.active {
+  background: var(--md-sys-color-primary) !important;
+  color: var(--md-sys-color-on-primary) !important;
+}
+
+body.sidebar-expanded .sidebar-nav #nav-soul.active .nav-indicator {
+  background: color-mix(in srgb, var(--md-sys-color-on-primary) 18%, transparent) !important;
+  color: var(--md-sys-color-on-primary) !important;
+}
+
+/* ---------- App-wide redesign: type, hover and motion ---------- */
+
+/* Headings use Soulleak's display face. */
+.view-header h2,
+.artist-title,
+.artist-tracks-title,
+.section-title,
+.settings-section-title,
+.sb-home-banner-title,
+.riff-hero-title {
+  font-family: var(--sl-display) !important;
+  letter-spacing: -0.03em;
+}
+
+.view-header h2 { font-weight: 750; }
+
+/* Buttons keep their pill shape (no squash-on-hover) and fill with rolling liquid instead. */
+@media (hover: hover) {
+  :is(.btn-pill-primary, .btn-outline-pill, .chip-btn, .preset-chip, .theme-mode-btn):not(:disabled):hover { border-radius: 28px; }
+  :is(.btn-icon-pill, .control-btn, .rail-icon-btn, .titlebar-btn):not(:disabled):hover { border-radius: 50%; }
+  .mix-card:hover { border-radius: var(--md-shape-corner-l); }
+}
+
+.btn-pill-primary,
+.btn-outline-pill {
+  isolation: isolate;
+  overflow: hidden;
+}
+
+.btn-pill-primary::before,
+.btn-outline-pill::before {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  left: 50%;
+  top: 100%;
+  width: max(240%, 220px);
+  aspect-ratio: 1;
+  border-radius: 42%;
+  transform: translateX(-50%);
+  transition: top 0.6s var(--sl-ease);
+  animation: slLiquidRoll 5s linear infinite paused;
+  pointer-events: none;
+}
+
+.btn-pill-primary::before {
+  background: color-mix(in srgb, var(--btn-primary-fg, var(--md-sys-color-on-primary)) 18%, var(--btn-primary-bg, var(--md-sys-color-primary)));
+}
+
+.btn-outline-pill::before { background: var(--md-sys-color-surface-container-highest); }
+
+.btn-pill-primary:hover:not(:disabled) { opacity: 1; }
+
+.btn-pill-primary:hover:not(:disabled)::before,
+.btn-outline-pill:hover:not(:disabled)::before {
+  top: -45%;
+  animation-play-state: running;
+}
+
+.btn-pill-primary:not(:disabled):active,
+.btn-outline-pill:not(:disabled):active { transform: scale(0.96); }
+
+/* Track rows: a primary edge slides in on hover and stays on the playing row. */
+.track-row {
+  transition: background-color 140ms ease, box-shadow 220ms var(--sl-ease) !important;
+}
+
+.track-row:hover,
+.track-row.playing {
+  box-shadow: inset 3px 0 0 var(--md-sys-color-primary);
+}
+
+/* Cards lift with a soft glow in the theme color. */
+.mix-card {
+  transition: --hl .18s ease, background-color 0.25s ease, transform 0.45s var(--sl-spring), box-shadow 0.3s ease !important;
+}
+
+.mix-card:hover {
+  box-shadow: 0 16px 32px -20px color-mix(in srgb, var(--md-sys-color-primary) 70%, transparent);
+}
+
+/* Sidebar playlists: the cover tips toward you. */
+.sb-lib-cover { transition: transform 0.45s var(--sl-spring); }
+.sb-lib-row:hover .sb-lib-cover { transform: scale(1.05) rotate(-2deg); }

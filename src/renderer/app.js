@@ -1091,8 +1091,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) { return false; }
   }
 
+  // Reduce motion is an explicit choice in Settings; the Windows animation setting no longer switches it on.
   function applyReducedMotionSetting() {
-    const reduced = getAdv('reduce_motion', systemPrefersReducedMotion());
+    const reduced = getAdv('reduce_motion', false);
     document.documentElement.classList.toggle('force-reduced-motion', reduced);
   }
 
@@ -1889,6 +1890,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                           navLocal: document.getElementById('nav-local'),
                           navHistory: document.getElementById('nav-history'),
                           navQueue: document.getElementById('nav-queue'),
+                          navSoul: document.getElementById('nav-soul'),
                           navSettings: document.getElementById('nav-settings'),
                           favoritesCount: document.getElementById('favorites-count'),
                           albumsCount: document.getElementById('albums-count'),
@@ -1918,6 +1920,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                           viewLocal: document.getElementById('view-local'),
                           viewHistory: document.getElementById('view-history'),
                           viewQueue: document.getElementById('view-queue'),
+                          viewSoul: document.getElementById('view-soul'),
                           viewPlaylistDetail: document.getElementById('view-playlist-detail'),
                           viewAlbum: document.getElementById('view-album'),
                           viewArtist: document.getElementById('view-artist'),
@@ -5596,7 +5599,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   ].join(', ');
 
   const PROTECTED_BRAND_TEXTS = new Set([
-    'riff', 'youtube', 'youtube music', 'soundcloud', 'spotify', 'apple music',
+    'soulleak', 'soul search', 'riff', 'youtube', 'youtube music', 'soundcloud', 'spotify', 'apple music',
     'deezer', 'yandex music', 'discord rpc', 'last.fm', 'lrclib', 'musixmatch',
     'kugou lrc', 'netease', 'genius', 'google sans', 'sf pro', 'lucide crisp',
     'solar duotone', 'yt-dlp', 'ffmpeg', 'beta', 'new', 'mp3', 'flac', 'm4a', 'opus', 'wav'
@@ -12959,15 +12962,7 @@ function renderClickableArtists(container, rawArtist, hintTrack = null) {
       item.addEventListener('click', () => {
         openPlaylistDetail(pl.id);
       });
-      item.addEventListener('contextmenu', async (e) => {
-        e.preventDefault();
-        if (window.electronAPI && window.electronAPI.showPlaylistContextMenu) {
-          const act = await window.electronAPI.showPlaylistContextMenu(pl.id);
-          if (act === 'export') {
-            exportSinglePlaylist(pl.id);
-          }
-        }
-      });
+      item.addEventListener('contextmenu', (e) => showPlaylistMenu(e, pl.id));
       el.playlistsList.appendChild(item);
     });
   }
@@ -13271,7 +13266,7 @@ function renderClickableArtists(container, rawArtist, hintTrack = null) {
     }
   });
 
-  function createPlaylist(name, initialTracks = [], cover = '') {
+  function createPlaylist(name, initialTracks = [], cover = '', { open = true } = {}) {
     if (!name || !name.trim()) return;
     const newPl = {
       id: 'pl_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
@@ -13286,7 +13281,7 @@ function renderClickableArtists(container, rawArtist, hintTrack = null) {
     state.playlists.push(newPl);
     localStorage.setItem('devsize_playlists', JSON.stringify(state.playlists));
     renderPlaylistsList();
-    openPlaylistDetail(newPl.id);
+    if (open) openPlaylistDetail(newPl.id);
     if (typeof hydrateMissingPlaylistCovers === 'function') {
       hydrateMissingPlaylistCovers(newPl);
     }
@@ -13419,13 +13414,31 @@ function renderClickableArtists(container, rawArtist, hintTrack = null) {
     openPlaylistDetail(state.currentPlaylistId);
   }
 
-  function deleteCurrentPlaylist() {
-    if (!state.currentPlaylistId) return;
-    state.playlists = state.playlists.filter(p => p.id !== state.currentPlaylistId);
+  function deletePlaylistById(playlistId) {
+    if (!playlistId || !state.playlists.some(p => p.id === playlistId)) return;
+    state.playlists = state.playlists.filter(p => p.id !== playlistId);
     localStorage.setItem('devsize_playlists', JSON.stringify(state.playlists));
-    state.currentPlaylistId = null;
     renderPlaylistsList();
-    switchView('discover');
+    if (typeof renderSidebarLibraryFeed === 'function') renderSidebarLibraryFeed();
+    if (state.currentPlaylistId === playlistId) {
+      state.currentPlaylistId = null;
+      if (state.currentView === 'playlist-detail') switchView('discover');
+    }
+  }
+
+  function deleteCurrentPlaylist() {
+    deletePlaylistById(state.currentPlaylistId);
+  }
+
+  // Right-click on any playlist row: Open, Export, or Delete (with the usual confirmation).
+  async function showPlaylistMenu(e, playlistId) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!window.electronAPI || !window.electronAPI.showPlaylistContextMenu) return;
+    const act = await window.electronAPI.showPlaylistContextMenu(playlistId);
+    if (act === 'open') openPlaylistDetail(playlistId);
+    else if (act === 'export') exportSinglePlaylist(playlistId);
+    else if (act === 'delete') askDeletePlaylist(playlistId);
   }
 
   let trackToAddToPlaylist = null;
@@ -13682,7 +13695,8 @@ function renderClickableArtists(container, rawArtist, hintTrack = null) {
   window.openSettingsModal = openSettingsModal;
   window.closeSettingsModal = closeSettingsModal;
 
-  function switchView(viewName) {
+  // sync: apply the change in this frame instead of the next (view transitions need the DOM updated right away).
+  function switchView(viewName, { sync = false } = {}) {
     if (typeof resetSettingsSearch === 'function') resetSettingsSearch();
     const btnSbSettings = document.getElementById('btn-sb-settings');
     if (btnSbSettings) btnSbSettings.classList.toggle('active', viewName === 'settings');
@@ -13697,19 +13711,20 @@ function renderClickableArtists(container, rawArtist, hintTrack = null) {
     }
     state.currentView = viewName;
 
-    requestAnimationFrame(() => {
+    const applyView = () => {
       document.querySelectorAll('.no-enter-anim').forEach(c => c.classList.remove('no-enter-anim'));
-      [el.viewDiscover, el.viewFavorites, el.viewAlbums, el.viewLocal, el.viewHistory, el.viewQueue, el.viewPlaylistDetail, el.viewAlbum, el.viewArtist].forEach(v => {
+      [el.viewDiscover, el.viewSoul, el.viewFavorites, el.viewAlbums, el.viewLocal, el.viewHistory, el.viewQueue, el.viewPlaylistDetail, el.viewAlbum, el.viewArtist].forEach(v => {
         if (v) v.classList.remove('active');
       });
 
         const nestedView = viewName === 'playlist-detail' || viewName === 'album' || viewName === 'artist';
         if (!nestedView) {
-          [el.navDiscover, el.navFavorites, el.navAlbums, el.navLocal, el.navHistory, el.navQueue, el.navSettings].forEach(n => {
+          [el.navDiscover, el.navSoul, el.navFavorites, el.navAlbums, el.navLocal, el.navHistory, el.navQueue, el.navSettings].forEach(n => {
             if (n) n.classList.remove('active');
           });
           const navMap = {
             discover: el.navDiscover,
+            soul: el.navSoul,
             favorites: el.navFavorites,
             albums: el.navAlbums,
             local: el.navLocal,
@@ -13727,6 +13742,10 @@ function renderClickableArtists(container, rawArtist, hintTrack = null) {
             if (el.navDiscover) el.navDiscover.classList.add('active');
             const sp = (localStorage.getItem('riff_home_layout') || 'spotify') === 'spotify';
             if (sp) renderSpotifyHome();
+          } else if (viewName === 'soul') {
+            if (el.viewSoul) el.viewSoul.classList.add('active');
+            if (el.navSoul) el.navSoul.classList.add('active');
+            openSoulSearchView();
           } else if (viewName === 'favorites') {
             if (el.viewFavorites) el.viewFavorites.classList.add('active');
             if (el.navFavorites) el.navFavorites.classList.add('active');
@@ -13763,7 +13782,9 @@ function renderClickableArtists(container, rawArtist, hintTrack = null) {
           if (typeof syncHomeAmbientVisibility === 'function') syncHomeAmbientVisibility();
           updateFxVisibility();
           if (typeof renderSidebarLibraryFeed === 'function') renderSidebarLibraryFeed();
-    });
+    };
+    if (sync) applyView();
+    else requestAnimationFrame(applyView);
   }
 
   function applyStackedRadius(container, itemSelector, horizontal) {
@@ -14080,6 +14101,41 @@ function updateNavIndicator(animate) {
     }
   });
 
+  if (el.navSoul) el.navSoul.addEventListener('click', () => openSoulSearchWithTransition(el.navSoul));
+
+  // Entering Soul Search: the page you were on sinks back while Soul Search pours in from the button you pressed.
+  function openSoulSearchWithTransition(fromEl) {
+    const main = el.mainContent || document.getElementById('main-content');
+    const calm = getAdv('reduce_motion', false);
+    const enter = () => {
+      switchView('soul', { sync: true });
+      if (!el.viewSoul) return;
+      el.viewSoul.classList.remove('soul-enter');
+      void el.viewSoul.offsetWidth;
+      el.viewSoul.classList.add('soul-enter');
+      clearTimeout(el.viewSoul._enterTimer);
+      el.viewSoul._enterTimer = setTimeout(() => el.viewSoul.classList.remove('soul-enter'), 1600);
+    };
+    if (state.currentView === 'soul' || calm || !main || !fromEl || typeof document.startViewTransition !== 'function') {
+      if (state.currentView !== 'soul') enter();
+      return;
+    }
+    const m = main.getBoundingClientRect();
+    const b = fromEl.getBoundingClientRect();
+    // Origin of the reveal, clamped into the content panel (the button sits to its left in the sidebar).
+    const x = Math.min(Math.max(b.left + b.width / 2 - m.left, 0), m.width);
+    const y = Math.min(Math.max(b.top + b.height / 2 - m.top, 0), m.height);
+    const radius = Math.hypot(Math.max(x, m.width - x), Math.max(y, m.height - y));
+    const root = document.documentElement;
+    root.style.setProperty('--soul-x', `${Math.round(x)}px`);
+    root.style.setProperty('--soul-y', `${Math.round(y)}px`);
+    root.style.setProperty('--soul-r', `${Math.ceil(radius)}px`);
+    // Lite mode keeps the reveal but drops the blur, which is the expensive part.
+    root.classList.toggle('soul-vt-lite', document.body.classList.contains('perf'));
+    root.classList.add('soul-vt');
+    const transition = document.startViewTransition(enter);
+    transition.finished.finally(() => root.classList.remove('soul-vt', 'soul-vt-lite'));
+  }
   if (el.navFavorites) el.navFavorites.addEventListener('click', () => switchView('favorites'));
   if (el.navAlbums) el.navAlbums.addEventListener('click', () => switchView('albums'));
   if (el.navLocal) el.navLocal.addEventListener('click', () => switchView('local'));
@@ -14663,24 +14719,30 @@ function bindCoverHoldZoom(wrapEl) {
   const btnCancelDeletePlaylist = document.getElementById('btn-cancel-delete-playlist');
   const btnConfirmDeletePlaylist = document.getElementById('btn-confirm-delete-playlist');
 
+  let pendingDeletePlaylistId = null;
+  function askDeletePlaylist(playlistId) {
+    const pl = state.playlists.find(p => p.id === playlistId);
+    if (!pl || !deletePlaylistModal) return;
+    pendingDeletePlaylistId = pl.id;
+    if (deletePlaylistMsg) deletePlaylistMsg.textContent = `Delete playlist "${pl.name}"? This action cannot be undone.`;
+    openModal(deletePlaylistModal);
+  }
+
   if (el.btnDeletePlaylist) {
-    el.btnDeletePlaylist.addEventListener('click', () => {
-      const pl = state.playlists.find(p => p.id === state.currentPlaylistId);
-      if (!pl) return;
-      if (deletePlaylistMsg) deletePlaylistMsg.textContent = `Delete playlist "${pl.name}"? This action cannot be undone.`;
-      if (deletePlaylistModal) openModal(deletePlaylistModal);
-    });
+    el.btnDeletePlaylist.addEventListener('click', () => askDeletePlaylist(state.currentPlaylistId));
   }
 
   if (btnCancelDeletePlaylist && deletePlaylistModal) {
     btnCancelDeletePlaylist.addEventListener('click', () => {
+      pendingDeletePlaylistId = null;
       closeModal(deletePlaylistModal);
     });
   }
 
   if (btnConfirmDeletePlaylist && deletePlaylistModal) {
     btnConfirmDeletePlaylist.addEventListener('click', () => {
-      deleteCurrentPlaylist();
+      deletePlaylistById(pendingDeletePlaylistId);
+      pendingDeletePlaylistId = null;
       closeModal(deletePlaylistModal);
       showToast('Playlist deleted');
     });
@@ -16326,7 +16388,7 @@ function bindCoverHoldZoom(wrapEl) {
   const advButtons = document.querySelectorAll('.effect-switch-btn[data-adv]');
   advButtons.forEach(btn => {
     const key = btn.dataset.adv;
-    const defaultVal = key === 'reduce_motion' ? systemPrefersReducedMotion() : (key === 'mesh_gradient' || key === 'mesh_cover_color' || key === 'clip_fx' || key === 'intensity_bg' || key === 'hide_titlebar' || key === 'classic_sidebar' || key === 'cover_bg' || key === 'track_banners') ? false : true;
+    const defaultVal = key === 'reduce_motion' ? false : (key === 'mesh_gradient' || key === 'mesh_cover_color' || key === 'clip_fx' || key === 'intensity_bg' || key === 'hide_titlebar' || key === 'classic_sidebar' || key === 'cover_bg' || key === 'track_banners') ? false : true;
     const currentVal = getAdv(key, defaultVal);
     btn.classList.toggle('active', currentVal);
 
@@ -19995,12 +20057,13 @@ function bindCoverHoldZoom(wrapEl) {
     const spinnerSvg = '<svg class="g-spinner" style="width:18px;height:18px;" viewBox="0 0 48 48"><circle cx="24" cy="24" r="20"/></svg>';
     const checkmarkSvg = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><polyline points="5 12.5 10 17.5 19 7.5"/></svg>';
 
-    if (activeImportToast && activeImportToast.parentNode === container) {
+    // options.quiet: the caller shows its own progress, so no import toast.
+    if (!options.quiet && activeImportToast && activeImportToast.parentNode === container) {
       toast = activeImportToast;
       textSpan = toast.querySelector('.toast-text');
       iconSpan = toast.querySelector('.toast-icon');
       if (textSpan) textSpan.textContent = `Importing ${escapeHtml(playlistName)}... (0/${total})`;
-    } else if (container) {
+    } else if (!options.quiet && container) {
       toast = document.createElement('div');
       toast.className = 'riff-toast info wide';
       toast.innerHTML = `<span class="toast-icon">${spinnerSvg}</span><span class="toast-text">Importing ${escapeHtml(playlistName)}... (0/${total})</span>`;
@@ -20141,6 +20204,267 @@ function bindCoverHoldZoom(wrapEl) {
   let parsedSpotifyExport = { likes: [], playlists: [] };
   let spLoginPollTimer = null;
   let spotifyConnected = false;
+  // Soul Search: type a mood, get the most-played community playlists for it, play or save one.
+  const SOUL_RECENT_KEY = 'soulleak_recent_moods';
+  const SOUL_SOURCE_NAMES = { youtube: 'YouTube', soundcloud: 'SoundCloud', spotify: 'Spotify' };
+  const soulForm = document.getElementById('soul-form');
+  const soulInput = document.getElementById('soul-input');
+  const soulHistory = document.getElementById('soul-history');
+  const soulHistoryList = document.getElementById('soul-history-list');
+  const soulStatus = document.getElementById('soul-status');
+  const soulGrid = document.getElementById('soul-results');
+  const soulTrackCache = new Map();
+  let soulResults = [];
+  let soulSearchSeq = 0;
+
+  function soulHeaders() {
+    return { 'X-Riff-Token': window.electronAPI?.serverToken || '' };
+  }
+
+  function soulRecentMoods() {
+    try {
+      const list = JSON.parse(localStorage.getItem(SOUL_RECENT_KEY) || '[]');
+      return Array.isArray(list) ? list.filter(s => typeof s === 'string' && s.trim()) : [];
+    } catch (_) {
+      return [];
+    }
+  }
+
+  function saveSoulMoods(list) {
+    if (list.length) localStorage.setItem(SOUL_RECENT_KEY, JSON.stringify(list));
+    else localStorage.removeItem(SOUL_RECENT_KEY);
+  }
+
+  function rememberSoulMood(mood) {
+    saveSoulMoods([mood, ...soulRecentMoods().filter(s => s.toLowerCase() !== mood.toLowerCase())].slice(0, 8));
+  }
+
+  function forgetSoulMood(mood) {
+    saveSoulMoods(soulRecentMoods().filter(s => s.toLowerCase() !== mood.toLowerCase()));
+  }
+
+  // Search history only shows while you are in the mood field (clicked or typing), filtered by what you type.
+  function soulHistoryMatches() {
+    const typed = (soulInput ? soulInput.value : '').trim().toLowerCase();
+    return soulRecentMoods().filter(m => !typed || (m.toLowerCase().includes(typed) && m.toLowerCase() !== typed));
+  }
+
+  function showSoulHistory() {
+    if (!soulHistory || !soulHistoryList || document.activeElement !== soulInput) return;
+    const moods = soulHistoryMatches();
+    if (!moods.length) {
+      hideSoulHistory();
+      return;
+    }
+    soulHistoryList.innerHTML = `
+      <div class="soul-history-head"><span>Recent</span><button type="button" class="soul-history-clear" data-clear>Clear</button></div>
+      ${moods.map(m => `
+        <div class="soul-history-item" role="option" data-mood="${escapeHtml(m)}">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>
+          <span>${escapeHtml(m)}</span>
+          <button type="button" class="soul-history-remove" data-remove="${escapeHtml(m)}" aria-label="Remove ${escapeHtml(m)}">
+            <svg viewBox="0 0 24 24"><path d="M7 7l10 10M17 7 7 17"/></svg>
+          </button>
+        </div>`).join('')}`;
+    soulHistory.classList.add('open');
+  }
+
+  function hideSoulHistory() {
+    if (soulHistory) soulHistory.classList.remove('open');
+  }
+
+  function moveSoulHistoryHighlight(step) {
+    const items = soulHistoryList ? [...soulHistoryList.querySelectorAll('.soul-history-item')] : [];
+    if (!items.length) return;
+    const cur = items.findIndex(i => i.classList.contains('is-active'));
+    const next = cur < 0 ? (step > 0 ? 0 : items.length - 1) : (cur + step + items.length) % items.length;
+    items.forEach((it, i) => it.classList.toggle('is-active', i === next));
+  }
+
+  function openSoulSearchView() {
+    hideSoulHistory();
+  }
+
+  function soulCardHtml(p, i) {
+    const by = [p.owner, p.popularityLabel].filter(Boolean).map(escapeHtml).join(' · ');
+    const art = p.cover
+      ? `<img src="${escapeHtml(p.cover)}" alt="" loading="lazy" draggable="false">`
+      : '';
+    return `
+      <article class="soul-card" data-idx="${i}" tabindex="0" style="--i:${i}">
+        <div class="soul-art">
+          ${art}
+          <span class="soul-src soul-src--${p.source}">${SOUL_SOURCE_NAMES[p.source] || p.source}</span>
+          <button type="button" class="soul-play" data-action="play" title="Play" aria-label="Play ${escapeHtml(p.title)}">
+            <svg viewBox="0 0 24 24"><path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.4-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5Z"/></svg>
+          </button>
+        </div>
+        <div class="soul-meta">
+          <div class="soul-name" title="${escapeHtml(p.title)}">${escapeHtml(p.title)}</div>
+          <div class="soul-by">${by}</div>
+        </div>
+        <button type="button" class="soul-save" data-action="save" title="Save to your playlists" aria-label="Save ${escapeHtml(p.title)}">
+          <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+        </button>
+      </article>`;
+  }
+
+  function renderSoulResults(data) {
+    const notes = [];
+    if (data.sources && data.sources.spotify === 'not-connected') {
+      notes.push('Log in to Spotify (Settings → Import) to include Spotify playlists.');
+    }
+    const failed = Object.entries(data.sources || {}).filter(([, s]) => s === 'error').map(([n]) => SOUL_SOURCE_NAMES[n] || n);
+    if (failed.length) notes.push(`${failed.join(' and ')} didn't answer this time.`);
+
+    if (!soulResults.length) {
+      soulGrid.innerHTML = '';
+      soulStatus.textContent = `No playlists matched "${data.query}". Try fewer or different words. ${notes.join(' ')}`.trim();
+      return;
+    }
+    soulStatus.textContent = `${soulResults.length} playlists for "${data.query}". ${notes.join(' ')}`.trim();
+    soulGrid.innerHTML = soulResults.map(soulCardHtml).join('');
+    soulGrid.querySelectorAll('.soul-art img').forEach(img => {
+      img.addEventListener('error', () => img.remove(), { once: true });
+    });
+  }
+
+  async function runSoulSearch(raw) {
+    const mood = String(raw || '').trim();
+    if (!soulGrid || !soulStatus) return;
+    if (!mood) {
+      if (soulInput) soulInput.focus();
+      return;
+    }
+    if (soulInput) {
+      soulInput.value = mood;
+      soulInput.blur();
+    }
+    hideSoulHistory();
+    rememberSoulMood(mood);
+
+    const seq = ++soulSearchSeq;
+    soulStatus.textContent = `Searching YouTube and SoundCloud for "${mood}"...`;
+    soulGrid.innerHTML = Array.from({ length: 8 }, (_, i) =>
+      `<div class="soul-card soul-skeleton" style="--i:${i}"><div class="soul-art"></div><div class="soul-meta"><div class="soul-line"></div><div class="soul-line short"></div></div></div>`
+    ).join('');
+
+    try {
+      const res = await fetch(`http://127.0.0.1:${state.serverPort}/api/soul-search?q=${encodeURIComponent(mood)}`, { headers: soulHeaders() });
+      const data = await res.json().catch(() => ({}));
+      if (seq !== soulSearchSeq) return;
+      if (!res.ok || !data.success) throw new Error(data.error || 'Soul Search failed');
+      soulResults = Array.isArray(data.playlists) ? data.playlists : [];
+      renderSoulResults(data);
+    } catch (_) {
+      if (seq !== soulSearchSeq) return;
+      soulResults = [];
+      soulGrid.innerHTML = '';
+      soulStatus.textContent = 'Could not reach the playlist sources. Check your connection and try again.';
+    }
+  }
+
+  async function loadSoulTracks(p) {
+    if (soulTrackCache.has(p.url)) return soulTrackCache.get(p.url);
+    const route = p.source === 'spotify' ? 'spotify-import' : 'playlist-import';
+    const res = await fetch(`http://127.0.0.1:${state.serverPort}/api/${route}?url=${encodeURIComponent(p.url)}`, { headers: soulHeaders() });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.success || !Array.isArray(data.tracks) || !data.tracks.length) {
+      throw new Error(data.error || 'This playlist has no playable tracks');
+    }
+    const tracks = await matchSpotifyTracks(data.tracks, p.title, null, {
+      quiet: true,
+      sourcePlatform: p.source === 'spotify' ? '' : p.source
+    });
+    if (!tracks.length) throw new Error('This playlist has no playable tracks');
+    soulTrackCache.set(p.url, tracks);
+    return tracks;
+  }
+
+  async function openSoulPlaylist(index, action) {
+    const p = soulResults[index];
+    const card = soulGrid && soulGrid.querySelector(`.soul-card[data-idx="${index}"]`);
+    if (!p || !card || card.classList.contains('is-busy')) return;
+    card.classList.add('is-busy');
+    try {
+      const tracks = await loadSoulTracks(p);
+      if (action === 'save') {
+        createPlaylist(p.title, tracks.map(t => ({ ...t })), p.cover || '', { open: false });
+        card.classList.add('is-saved');
+        showToast(`Saved "${p.title}" to your playlists`, 'success');
+      } else {
+        playTrack(tracks[0], tracks, 0);
+        showToast(`Playing "${p.title}" · ${tracks.length} tracks`, 'info');
+      }
+    } catch (err) {
+      showToast(err.message || 'Could not load this playlist', 'error');
+    } finally {
+      card.classList.remove('is-busy');
+    }
+  }
+
+  if (soulForm) {
+    soulForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      runSoulSearch(soulInput ? soulInput.value : '');
+    });
+  }
+  if (soulInput) {
+    // Clicking into the field or typing opens history; simply landing on the page does not.
+    soulInput.addEventListener('mousedown', () => setTimeout(showSoulHistory, 0));
+    soulInput.addEventListener('input', showSoulHistory);
+    soulInput.addEventListener('blur', () => setTimeout(hideSoulHistory, 120));
+    soulInput.addEventListener('keydown', (e) => {
+      const open = soulHistory && soulHistory.classList.contains('open');
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        if (!open) showSoulHistory();
+        else moveSoulHistoryHighlight(e.key === 'ArrowDown' ? 1 : -1);
+      } else if (e.key === 'Escape' && open) {
+        e.preventDefault();
+        hideSoulHistory();
+      } else if (e.key === 'Enter' && open) {
+        const active = soulHistoryList.querySelector('.soul-history-item.is-active');
+        if (active) {
+          e.preventDefault();
+          runSoulSearch(active.dataset.mood);
+        }
+      }
+    });
+  }
+  if (soulHistory) {
+    // Keep focus in the field while clicking inside the list.
+    soulHistory.addEventListener('mousedown', (e) => e.preventDefault());
+    soulHistory.addEventListener('click', (e) => {
+      const remove = e.target.closest('[data-remove]');
+      if (remove) {
+        forgetSoulMood(remove.dataset.remove);
+        showSoulHistory();
+        return;
+      }
+      if (e.target.closest('[data-clear]')) {
+        saveSoulMoods([]);
+        hideSoulHistory();
+        return;
+      }
+      const item = e.target.closest('.soul-history-item');
+      if (item) runSoulSearch(item.dataset.mood);
+    });
+  }
+  if (soulGrid) {
+    soulGrid.addEventListener('click', (e) => {
+      const card = e.target.closest('.soul-card:not(.soul-skeleton)');
+      if (!card) return;
+      const actionBtn = e.target.closest('[data-action]');
+      openSoulPlaylist(Number(card.dataset.idx), actionBtn ? actionBtn.dataset.action : 'play');
+    });
+    soulGrid.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter' || !e.target.classList.contains('soul-card')) return;
+      e.preventDefault();
+      openSoulPlaylist(Number(e.target.dataset.idx), 'play');
+    });
+  }
+
   const spotifyHeaders = { 'X-Riff-Token': window.electronAPI?.serverToken || '' };
 
   async function checkSpotifyAuthStatus() {
@@ -26701,10 +27025,11 @@ function bindCoverHoldZoom(wrapEl) {
     });
   }
 
-  const DEFAULT_SIDEBAR_ORDER = ['discover', 'favorites', 'albums', 'local', 'history', 'queue'];
+  const DEFAULT_SIDEBAR_ORDER = ['discover', 'soul', 'favorites', 'albums', 'local', 'history', 'queue'];
 
   const SIDEBAR_ITEM_DEFS = {
     discover: { name: 'Home', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>' },
+    soul: { name: 'Soul Search', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.5 3.5S4.5 10 4.5 14.5a6 6 0 0 0 12 0c0-4.5-6-11-6-11Z"/><path d="M19.5 2.5v4M17.5 4.5h4"/></svg>' },
     favorites: { name: 'Favorites', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>' },
     albums: { name: 'Albums', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg>' },
     local: { name: 'My files', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>' },
@@ -26719,8 +27044,9 @@ function bindCoverHoldZoom(wrapEl) {
         const parsed = JSON.parse(raw);
         if (Array.isArray(parsed) && parsed.length > 0) {
           const valid = parsed.filter(id => DEFAULT_SIDEBAR_ORDER.includes(id));
-          DEFAULT_SIDEBAR_ORDER.forEach(id => {
-            if (!valid.includes(id)) valid.push(id);
+          // Items missing from a saved order (like newly added ones) go back to their default spot.
+          DEFAULT_SIDEBAR_ORDER.forEach((id, i) => {
+            if (!valid.includes(id)) valid.splice(Math.min(i, valid.length), 0, id);
           });
           return valid;
         }
@@ -27361,6 +27687,7 @@ function bindCoverHoldZoom(wrapEl) {
         `;
         row.append(coverBox, info);
         row.addEventListener('click', () => openPlaylistDetail(pl.id));
+        row.addEventListener('contextmenu', (e) => showPlaylistMenu(e, pl.id));
         frag.appendChild(row);
       });
     } else if (currentSidebarLibFilter === 'albums') {

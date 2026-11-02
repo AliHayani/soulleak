@@ -14,7 +14,7 @@
     "release:major": "npm version major && git push --follow-tags"
   },
   "keywords": [],
-  "author": "rootscripts",
+  "author": "Ali Hayani Mounir",
   "license": "MIT",
   "description": "Soulleak, a music player.",
   "devDependencies": {

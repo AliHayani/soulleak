@@ -112,6 +112,7 @@ function i18nValueBroken(key, value) {
 }
 const logger = require('../shared/logger');
 const { getSystemAudioOutputInfo } = require('../shared/audio-output');
+const { createSoulSearch } = require('./soul-search');
 
 let serverActiveProxy = '';
 
@@ -5399,7 +5400,8 @@ const TOKEN_PROTECTED_ROUTES = new Set([
   '/api/clear-offline-library',
   '/api/save-custom-lyrics',
   '/api/encode',
-  '/api/yandex-import'
+  '/api/yandex-import',
+  '/api/soul-search'
 ]);
 
 function getServerToken() {
@@ -7126,6 +7128,16 @@ async function spotifyGetWithRetry(requestUrl) {
   return resp;
 }
 
+const soulSearch = createSoulSearch({
+  ytmSearch: (query, params) => ytmSearchRequest(query, params),
+  soundCloudClientId: (force) => refreshSoundCloudClientId(force),
+  isSpotifyConnected: () => {
+    loadSpotifyAuth();
+    return !!spotifyAuth.refreshToken;
+  },
+  spotifyGet: (requestUrl) => spotifyGetWithRetry(requestUrl)
+});
+
 function spotifyRetryAfterSeconds(resp) {
   const raw = resp.headers?.['retry-after'];
   const seconds = Number(raw);
@@ -8364,6 +8376,18 @@ async function requestHandler(req, res) {
   if (parsedUrl.pathname === '/api/playlist-import') {
     const playlistUrl = parsedUrl.query.url || '';
     return handlePlaylistImport(req, res, playlistUrl);
+  }
+
+  if (parsedUrl.pathname === '/api/soul-search') {
+    try {
+      const result = await soulSearch(parsedUrl.query.q || '');
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ success: true, ...result }));
+    } catch (err) {
+      try { logger.error('Soul Search failed', err); } catch (_) {}
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ success: false, error: 'Soul Search failed. Try again in a moment.' }));
+    }
   }
 
   if (parsedUrl.pathname === '/api/track-cover') {

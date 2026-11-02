@@ -1351,10 +1351,10 @@ function runGUI() {
         const win = BrowserWindow.fromWebContents(event.sender) || mainWindow;
         return new Promise((resolve) => {
           const menu = Menu.buildFromTemplate([
-            {
-              label: 'Export as JSON',
-              click: () => resolve('export')
-            }
+            { label: 'Open', click: () => resolve('open') },
+            { label: 'Export as JSON', click: () => resolve('export') },
+            { type: 'separator' },
+            { label: 'Delete playlist…', click: () => resolve('delete') }
           ]);
           menu.popup({
             window: win,
