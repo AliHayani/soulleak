@@ -1977,3 +1977,365 @@ body.sidebar-expanded .sidebar-nav #nav-soul.active .nav-indicator { color: #c4b
   opacity: 0;
   animation: obExitWord 0.7s ease-out 0.85s forwards;
 }
+
+/* ---- Queue button on song rows ---- */
+body .track-row .track-row-actions > button.btn-row-queue.btn-icon-pill:not(.btn-fav) { display: flex !important; }
+.btn-row-queue .i-done { display: none; }
+.btn-row-queue.is-queued .i-add { display: none; }
+.btn-row-queue.is-queued .i-done { display: block; }
+.btn-row-queue.is-queued { color: #c4b5fd; }
+/* A queued song keeps its check visible even when the row isn't hovered. */
+.track-row:has(.btn-row-queue.is-queued) .track-row-actions { opacity: 1; }
+.track-row:has(.btn-row-queue.is-queued):not(:hover) .track-row-actions > button:not(.btn-row-queue) { opacity: 0; }
+
+/* ---- Up Next button ---- */
+.ob-upnext-btn { position: relative; }
+
+.ob-upnext-count {
+  position: absolute;
+  top: 2px;
+  right: 1px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: var(--ob-grad);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 16px;
+  text-align: center;
+  box-shadow: 0 0 10px rgba(139, 92, 246, 0.7);
+  pointer-events: none;
+}
+
+.ob-upnext-count[hidden] { display: none; }
+
+#btn-ob-upnext.active {
+  color: #fff;
+  background: rgba(139, 92, 246, 0.22);
+  box-shadow: inset 0 0 0 1px rgba(139, 92, 246, 0.6);
+}
+
+/* ---- Up Next flyout: a floating glass panel above the playbar ---- */
+.ob-upnext {
+  position: fixed;
+  right: 18px;
+  bottom: 108px;
+  z-index: 9000;
+  display: flex;
+  flex-direction: column;
+  width: min(380px, calc(100vw - 36px));
+  max-height: min(620px, calc(100vh - 170px));
+  border-radius: 18px;
+  border: 1px solid rgba(139, 92, 246, 0.35);
+  background:
+    radial-gradient(140% 60% at 100% 0%, rgba(139, 92, 246, 0.18), transparent 60%),
+    rgba(10, 9, 15, 0.94);
+  backdrop-filter: blur(30px) saturate(150%);
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.03) inset, 0 0 50px rgba(139, 92, 246, 0.12);
+  opacity: 0;
+  transform: translateY(14px) scale(0.97);
+  transform-origin: 90% 100%;
+  pointer-events: none;
+  visibility: hidden;
+  transition: opacity 0.22s ease, transform 0.32s cubic-bezier(0.22, 1, 0.36, 1), visibility 0s linear 0.32s;
+}
+
+.ob-upnext.open {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+  visibility: visible;
+  transition: opacity 0.22s ease, transform 0.32s cubic-bezier(0.22, 1, 0.36, 1), visibility 0s;
+}
+
+.ob-upnext-head {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  padding: 18px 18px 12px;
+}
+
+.ob-upnext-head > div { flex: 1; }
+
+.ob-upnext-kicker {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ob-violet);
+}
+
+.ob-upnext-head h3 {
+  margin: 2px 0 0;
+  font-family: var(--sl-display, inherit);
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: #fff;
+}
+
+.ob-upnext-clear {
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 8px;
+  border: 1px solid var(--ob-line);
+  background: transparent;
+  color: var(--md-sys-color-on-surface-variant);
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.ob-upnext-clear:hover { color: #fff; border-color: rgba(255, 255, 255, 0.2); }
+.ob-upnext-clear[hidden] { display: none; }
+
+.ob-upnext-close {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--md-sys-color-on-surface-variant);
+  cursor: pointer;
+}
+
+.ob-upnext-close:hover { background: rgba(255, 255, 255, 0.1); color: #fff; }
+
+.ob-upnext-body {
+  position: relative;
+  overflow-y: auto;
+  padding: 4px 10px 16px;
+  scrollbar-width: thin;
+}
+
+/* The rail: a thin violet line threading every song, fading as it goes down. */
+.ob-upnext-body::before {
+  content: '';
+  position: absolute;
+  left: 22px;
+  top: 30px;
+  bottom: 24px;
+  width: 2px;
+  border-radius: 1px;
+  background: linear-gradient(180deg, var(--ob-violet), rgba(99, 102, 241, 0.35) 40%, transparent);
+  pointer-events: none;
+}
+
+.ob-un-dot {
+  position: relative;
+  z-index: 1;
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  margin: 0 4px;
+  border-radius: 50%;
+  background: #0b0a10;
+  border: 2px solid rgba(139, 92, 246, 0.55);
+}
+
+.ob-un-dot.is-now {
+  width: 12px;
+  height: 12px;
+  margin: 0 2px;
+  border: 0;
+  background: var(--ob-grad);
+  box-shadow: 0 0 0 4px rgba(139, 92, 246, 0.18), 0 0 14px rgba(139, 92, 246, 0.9);
+}
+
+.ob-un-now.is-playing .ob-un-dot.is-now { animation: obUnPulse 1.6s ease-in-out infinite; }
+
+@keyframes obUnPulse {
+  50% { box-shadow: 0 0 0 7px rgba(139, 92, 246, 0.08), 0 0 20px rgba(139, 92, 246, 1); }
+}
+
+.ob-un-now {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 8px 14px;
+  margin-bottom: 4px;
+}
+
+.ob-un-now-art {
+  position: relative;
+  width: 56px;
+  height: 56px;
+  flex-shrink: 0;
+  overflow: hidden;
+  border-radius: 10px;
+  background: var(--ob-grad);
+  box-shadow: 0 10px 24px -8px rgba(139, 92, 246, 0.7);
+}
+
+.ob-un-now-art img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+.ob-un-eq {
+  position: absolute;
+  inset: auto 0 0 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 2px;
+  height: 22px;
+  padding-bottom: 5px;
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.65));
+}
+
+.ob-un-eq i {
+  width: 3px;
+  height: 4px;
+  border-radius: 1px;
+  background: #fff;
+}
+
+.ob-un-now.is-playing .ob-un-eq i { animation: obUnEq 0.9s ease-in-out infinite; }
+.ob-un-now.is-playing .ob-un-eq i:nth-child(2) { animation-delay: -0.3s; }
+.ob-un-now.is-playing .ob-un-eq i:nth-child(3) { animation-delay: -0.6s; }
+
+@keyframes obUnEq {
+  0%, 100% { height: 4px; }
+  50% { height: 13px; }
+}
+
+.ob-un-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+
+.ob-un-kicker {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #c4b5fd;
+}
+
+.ob-un-title {
+  font-size: 13.5px;
+  font-weight: 650;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ob-un-now .ob-un-title { font-size: 15px; font-weight: 750; }
+
+.ob-un-artist {
+  font-size: 12px;
+  color: var(--md-sys-color-on-surface-variant);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ob-un-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 0 4px 34px;
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.ob-un-label span {
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgba(139, 92, 246, 0.2);
+  color: #c4b5fd;
+  letter-spacing: 0.04em;
+}
+
+.ob-un-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 8px;
+  border-radius: 10px;
+  cursor: pointer;
+  animation: obUnIn 0.32s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: calc(min(var(--i, 0), 12) * 22ms);
+  transition: background-color 0.15s ease, opacity 0.16s ease, transform 0.16s ease;
+}
+
+@keyframes obUnIn {
+  from { opacity: 0; transform: translateX(10px); }
+}
+
+.ob-un-item:hover,
+.ob-un-item:focus-visible { background: rgba(139, 92, 246, 0.1); outline: none; }
+.ob-un-item:hover .ob-un-dot { background: var(--ob-violet); border-color: var(--ob-violet); }
+.ob-un-item.is-leaving { opacity: 0; transform: translateX(-14px); }
+
+.ob-un-art {
+  width: 38px;
+  height: 38px;
+  flex-shrink: 0;
+  overflow: hidden;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.ob-un-art img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+.ob-un-dur {
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--md-sys-color-on-surface-variant);
+  opacity: 0.7;
+}
+
+.ob-un-remove {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--md-sys-color-on-surface-variant);
+  opacity: 0;
+  cursor: pointer;
+  transition: opacity 0.15s ease, background-color 0.15s ease, color 0.15s ease;
+}
+
+.ob-un-item:hover .ob-un-remove,
+.ob-un-item:focus-within .ob-un-remove { opacity: 1; }
+.ob-un-remove:hover { background: rgba(255, 80, 120, 0.15); color: #ff7a9a; }
+.ob-un-item:hover .ob-un-dur { display: none; }
+
+.ob-un-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 30px 24px 26px;
+  text-align: center;
+  color: var(--md-sys-color-on-surface-variant);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+.ob-un-empty strong { color: #fff; font-size: 14px; }
+
+.ob-un-empty-orb {
+  width: 54px;
+  height: 54px;
+  margin-bottom: 8px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #c4b5fd, var(--ob-violet) 45%, #1e1438 75%);
+  box-shadow: 0 0 34px rgba(139, 92, 246, 0.55);
+  animation: obUnPulse 2.4s ease-in-out infinite;
+}
+
+/* The empty-state rail would point at nothing. */
+.ob-upnext-body:has(.ob-un-empty)::before { display: none; }
+
+/* Sidebar Queue tab only exists while songs are queued. */
+#sidebar-lib-chips [data-lib-filter="queue"][hidden] { display: none !important; }

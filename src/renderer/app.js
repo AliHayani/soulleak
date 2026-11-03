@@ -650,7 +650,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   const defaultPresets = [
     { id: 'p_default', name: 'Default', settings: { speed: 1.0, speedPitch: 1.0, pitch: 0, reverb: 0, distortion: 0, volume: 1.0, echo: 0, eq: { low: 0, mid: 0, high: 0 }, eqBands: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0] } },
-    { id: 'p_speedup', name: 'Speed up (orig pitch)', settings: { speed: 1.35, speedPitch: 1.0, pitch: 0, reverb: 0, distortion: 0, volume: 1.0, echo: 0, eq: { low: 0, mid: 0, high: 0 }, eqBands: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0] } },
     { id: 'p_speedup_pitch', name: 'Speed up', settings: { speed: 1.0, speedPitch: 1.30, pitch: 0, reverb: 0, distortion: 0, volume: 1.0, echo: 0, eq: { low: 0, mid: 0, high: 0 }, eqBands: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0] } },
     { id: 'p_slowed', name: 'Slowed + reverb', settings: { speed: 1.0, speedPitch: 0.82, pitch: 0, reverb: 65, distortion: 0, volume: 1.0, echo: 15, eq: { low: 0, mid: 0, high: 0 }, eqBands: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0] } },
     { id: 'p_nightcore', name: 'Nightcore', settings: { speed: 1.0, speedPitch: 1.25, pitch: 0, reverb: 20, distortion: 0, volume: 1.0, echo: 0, eq: { low: 0, mid: 0, high: 0 }, eqBands: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0] } },
@@ -8315,6 +8314,15 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
     }
 
+    // Songs the user queued always come next, shuffle or not.
+    const queuedNext = state.queue[state.queueIndex + 1];
+    if (queuedNext && queuedNext._userQueued) {
+      state.queueIndex += 1;
+      recordPlayedIndex(state.queueIndex);
+      playTrack(queuedNext);
+      return;
+    }
+
     if (state.isRadioQueue && state.queueIndex + 1 >= state.queue.length) {
       await ensureInfiniteWaveQueue(true);
       if (state.queueIndex + 1 < state.queue.length) {
@@ -10534,9 +10542,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
   window.executeCopyShareLink = executeCopyShareLink;
 
+  // Spotify-style queue: a queued song plays right after the current one (behind anything queued earlier),
+  // then the album or playlist carries on. Queued copies are marked with _userQueued.
   function addTrackToQueue(track) {
     if (!track) return;
-    const cloned = Object.assign({}, track);
+    const cloned = Object.assign({}, track, { _userQueued: true });
     if (!state.currentTrack || state.queue.length === 0) {
       state.queue = [cloned];
       state.queueIndex = 0;
@@ -10545,19 +10555,49 @@ document.addEventListener('DOMContentLoaded', async () => {
       showToast(typeof t === 'function' ? t('Added to queue') : 'Added to queue', 'success');
       return;
     }
-    state.queue.push(cloned);
+    let insertAt = Math.max(0, state.queueIndex + 1);
+    while (insertAt < state.queue.length && state.queue[insertAt] && state.queue[insertAt]._userQueued) insertAt++;
+    state.queue.splice(insertAt, 0, cloned);
+    // Played-index history (used by shuffle) points past the insert, so shift those entries.
+    if (Array.isArray(state.queueHistory)) {
+      state.queueHistory = state.queueHistory.map((i) => (i >= insertAt ? i + 1 : i));
+    }
     if (el.queueCount) el.queueCount.textContent = String(state.queue.length);
     updateQueueBadge();
-    if (state.currentView === 'queue' && typeof renderQueueView === 'function') {
-      renderQueueView();
-    } else if (state.currentView === 'queue' && el.queueTracksList) {
-      el.queueTracksList.querySelector('.empty-hint')?.remove();
-      const qIdx = state.queue.length - 1;
-      el.queueTracksList.appendChild(createTrackRow(cloned, qIdx, () => playTrack(cloned, qIdx)));
-    }
+    if (state.currentView === 'queue' && typeof renderQueueView === 'function') renderQueueView();
     showToast(typeof t === 'function' ? t('Added to queue') : 'Added to queue', 'success');
   }
   window.addTrackToQueue = addTrackToQueue;
+
+  // Index of a song the user queued that hasn't played yet, or -1.
+  function userQueuedIndexOf(track) {
+    if (!track) return -1;
+    for (let i = Math.max(0, state.queueIndex + 1); i < state.queue.length; i++) {
+      const q = state.queue[i];
+      if (q && q._userQueued && isSameTrack(q, track)) return i;
+    }
+    return -1;
+  }
+
+  function userQueuedCount() {
+    let n = 0;
+    for (let i = Math.max(0, state.queueIndex + 1); i < state.queue.length; i++) {
+      if (state.queue[i] && state.queue[i]._userQueued) n++;
+    }
+    return n;
+  }
+
+  function removeTrackFromUserQueue(track) {
+    const idx = userQueuedIndexOf(track);
+    if (idx < 0) return;
+    removeTrackFromQueue(idx);
+    showToast('Removed from queue', 'info');
+  }
+
+  function toggleTrackInQueue(track) {
+    if (userQueuedIndexOf(track) >= 0) removeTrackFromUserQueue(track);
+    else addTrackToQueue(track);
+  }
 
   function isTrackFavorited(track) {
     if (!track) return false;
@@ -10737,7 +10777,13 @@ document.addEventListener('DOMContentLoaded', async () => {
           if (typeof openAddToPlaylistModal === 'function') openAddToPlaylistModal(track);
         }
       },
-      {
+      userQueuedIndexOf(track) >= 0 ? {
+        id: 'queue',
+        active: true,
+        label: 'Remove from queue',
+        icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="16" y2="6"/><line x1="3" y1="12" x2="12" y2="12"/><line x1="3" y1="18" x2="12" y2="18"/><line x1="16" y1="16" x2="22" y2="22"/><line x1="22" y1="16" x2="16" y2="22"/></svg>',
+        action: () => removeTrackFromUserQueue(track)
+      } : {
         id: 'queue',
         label: 'Add to queue',
         icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="16" y2="18"/><polygon points="3 6 3 10 6 8 3 6"/><line x1="19" y1="15" x2="19" y2="21"/><line x1="16" y1="18" x2="22" y2="18"/></svg>',
@@ -11235,6 +11281,10 @@ document.addEventListener('DOMContentLoaded', async () => {
       <button class="btn-icon-pill btn-row-fav btn-fav btn-fav-track" title="favorite">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="${isFav ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"></path></svg>
       </button>
+      ${context !== 'queue' ? `<button class="btn-icon-pill btn-row-queue${userQueuedIndexOf(track) >= 0 ? ' is-queued' : ''}" title="${userQueuedIndexOf(track) >= 0 ? 'Remove from queue' : 'Add to queue'}" aria-label="Add to queue">
+      <svg class="i-add" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="15" y2="6"/><line x1="3" y1="12" x2="12" y2="12"/><line x1="3" y1="18" x2="11" y2="18"/><line x1="18" y1="12" x2="18" y2="20"/><line x1="14" y1="16" x2="22" y2="16"/></svg>
+      <svg class="i-done" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="15" y2="6"/><line x1="3" y1="12" x2="11" y2="12"/><line x1="3" y1="18" x2="9" y2="18"/><polyline points="13 17 16 20 22 13"/></svg>
+      </button>` : ''}
       <button class="btn-icon-pill btn-row-fx" title="Play with an effect" aria-label="Play with an effect">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/><circle cx="12" cy="12" r="2.5"/></svg>
       </button>
@@ -11372,6 +11422,14 @@ document.addEventListener('DOMContentLoaded', async () => {
             const isFavNow = state.favorites.some(f => isSameTrack(f, track));
             const svg = btnFav.querySelector('svg');
             if (svg) svg.setAttribute('fill', isFavNow ? 'currentColor' : 'none');
+          });
+        }
+
+        const btnQueue = row.querySelector('.btn-row-queue');
+        if (btnQueue) {
+          btnQueue.addEventListener('click', (e) => {
+            e.stopPropagation();
+            toggleTrackInQueue(track);
           });
         }
 
@@ -12485,6 +12543,7 @@ function renderClickableArtists(container, rawArtist, hintTrack = null) {
 
   function updateQueueBadge() {
     setNavCount(el.queueCount, state.queue.length);
+    syncQueueUi();
     if (typeof renderSidebarLibraryFeed === 'function') renderSidebarLibraryFeed();
   }
 
@@ -18303,16 +18362,172 @@ function bindCoverHoldZoom(wrapEl) {
     }, 500);
   }
 
-  // ---- Obsidian Premium layout: sidebar search row, mood input, listening level, fx tags, mini-player button ----
-  const obSearchRow = document.getElementById('nav-ob-search');
-  if (obSearchRow) {
-    obSearchRow.addEventListener('click', () => {
-      const input = document.getElementById('search-input');
-      if (!input) return;
-      input.focus();
-      input.select();
+  // ---- Obsidian Premium layout: mood input, listening level, fx tags, mini-player button, Up Next ----
+
+  // Keeps every queue indicator in step: the Up Next badge, the row buttons, the open flyout, and the sidebar
+  // Queue tab, which only shows while there are songs the user queued. Runs early (from updateQueueBadge),
+  // so it only touches `state` and the DOM.
+  function syncQueueUi() {
+    const count = userQueuedCount();
+    const badge = document.getElementById('ob-upnext-count');
+    if (badge) {
+      badge.hidden = count === 0;
+      badge.textContent = String(count);
+    }
+    const tab = document.querySelector('#sidebar-lib-chips [data-lib-filter="queue"]');
+    if (tab) {
+      tab.hidden = count === 0;
+      if (count === 0 && tab.classList.contains('active')) {
+        document.querySelector('#sidebar-lib-chips [data-lib-filter="playlists"]')?.click();
+      }
+    }
+    document.querySelectorAll('.track-row .btn-row-queue').forEach((btn) => {
+      const row = btn.closest('.track-row');
+      const queued = !!(row && row._trackData) && userQueuedIndexOf(row._trackData) >= 0;
+      btn.classList.toggle('is-queued', queued);
+      btn.title = queued ? 'Remove from queue' : 'Add to queue';
+      btn.setAttribute('aria-label', btn.title);
+    });
+    if (document.getElementById('ob-upnext')?.classList.contains('open')) renderUpNext();
+  }
+
+  function upNextContextLabel() {
+    const ctx = state.currentTrackContext;
+    if (ctx === 'playlist') {
+      const pl = (state.playlists || []).find((p) => p.id === state.currentPlaylistId);
+      return pl ? pl.name : 'this playlist';
+    }
+    if (ctx === 'favorites') return 'Liked songs';
+    if (ctx === 'album') return 'this album';
+    if (ctx === 'artist') return (state.currentArtistData && state.currentArtistData.name) || 'this artist';
+    if (ctx === 'search') return 'your search';
+    if (ctx === 'local') return 'My files';
+    if (state.isRadioQueue || state.myWaveActive) return 'Radio';
+    return 'what you were playing';
+  }
+
+  function upNextItem(track, idx, order, removable) {
+    const art = getTrackThumbUrl(track);
+    return `<div class="ob-un-item" data-idx="${idx}" style="--i:${order}" role="button" tabindex="0" title="Play now">
+      <span class="ob-un-dot"></span>
+      <span class="ob-un-art">${art ? `<img src="${escapeHtml(art)}" alt="" loading="lazy" onerror="this.remove()">` : ''}</span>
+      <span class="ob-un-text"><span class="ob-un-title">${escapeHtml(track.title || 'Untitled')}</span><span class="ob-un-artist">${escapeHtml(stripYoutubeTopic(track.artist || ''))}</span></span>
+      <span class="ob-un-dur">${formatDuration(track.duration)}</span>
+      ${removable ? `<button type="button" class="ob-un-remove" data-remove="${idx}" title="Remove from queue" aria-label="Remove from queue"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>` : ''}
+    </div>`;
+  }
+
+  // The Up Next flyout: now playing, then "Queued by you", then what comes next from the current list,
+  // threaded on a glowing rail.
+  function renderUpNext() {
+    const body = document.getElementById('ob-upnext-body');
+    if (!body) return;
+    const cur = state.currentTrack;
+    const start = Math.max(0, state.queueIndex + 1);
+    const queued = [];
+    const after = [];
+    for (let i = start; i < state.queue.length; i++) {
+      const tr = state.queue[i];
+      if (!tr) continue;
+      if (tr._userQueued && after.length === 0) queued.push(i);
+      else if (after.length < 30) after.push(i);
+    }
+    const clearBtn = document.getElementById('ob-upnext-clear');
+    if (clearBtn) clearBtn.hidden = queued.length === 0;
+
+    if (!cur && !queued.length && !after.length) {
+      body.innerHTML = `<div class="ob-un-empty"><div class="ob-un-empty-orb"></div><strong>Nothing queued</strong><span>Hover a song and press the queue button, or right-click it and choose Add to queue.</span></div>`;
+      return;
+    }
+    let order = 0;
+    let html = '';
+    if (cur) {
+      const art = getTrackThumbUrl(cur);
+      html += `<section class="ob-un-now${state.isPlaying ? ' is-playing' : ''}">
+        <span class="ob-un-dot is-now"></span>
+        <span class="ob-un-now-art">${art ? `<img src="${escapeHtml(art)}" alt="" onerror="this.remove()">` : ''}<span class="ob-un-eq"><i></i><i></i><i></i></span></span>
+        <span class="ob-un-text"><span class="ob-un-kicker">Now playing</span><span class="ob-un-title">${escapeHtml(cur.title || 'Untitled')}</span><span class="ob-un-artist">${escapeHtml(stripYoutubeTopic(cur.artist || ''))}</span></span>
+      </section>`;
+    }
+    if (queued.length) {
+      html += `<div class="ob-un-label">Queued by you <span>${queued.length}</span></div>`;
+      html += queued.map((i) => upNextItem(state.queue[i], i, order++, true)).join('');
+    }
+    if (after.length) {
+      html += `<div class="ob-un-label">Next from ${escapeHtml(upNextContextLabel())}</div>`;
+      html += after.map((i) => upNextItem(state.queue[i], i, order++, true)).join('');
+    }
+    body.innerHTML = html;
+  }
+
+  function setUpNextOpen(open) {
+    const panel = document.getElementById('ob-upnext');
+    const btn = document.getElementById('btn-ob-upnext');
+    if (!panel) return;
+    if (open) renderUpNext();
+    panel.classList.toggle('open', open);
+    panel.setAttribute('aria-hidden', open ? 'false' : 'true');
+    if (btn) {
+      btn.classList.toggle('active', open);
+      btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    }
+  }
+
+  const upNextPanel = document.getElementById('ob-upnext');
+  const upNextBtn = document.getElementById('btn-ob-upnext');
+  if (upNextPanel && upNextBtn) {
+    upNextBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      setUpNextOpen(!upNextPanel.classList.contains('open'));
+    });
+    document.getElementById('ob-upnext-close')?.addEventListener('click', () => setUpNextOpen(false));
+    document.getElementById('ob-upnext-clear')?.addEventListener('click', () => {
+      const idx = [];
+      for (let i = Math.max(0, state.queueIndex + 1); i < state.queue.length; i++) {
+        if (state.queue[i] && state.queue[i]._userQueued) idx.push(i);
+      }
+      if (idx.length) removeQueueTracks(idx);
+      showToast('Queue cleared', 'info');
+    });
+    upNextPanel.addEventListener('click', (e) => {
+      const rem = e.target.closest('[data-remove]');
+      if (rem) {
+        e.stopPropagation();
+        const item = rem.closest('.ob-un-item');
+        if (item) item.classList.add('is-leaving');
+        const idx = Number(rem.dataset.remove);
+        setTimeout(() => removeTrackFromQueue(idx), 160);
+        return;
+      }
+      const item = e.target.closest('.ob-un-item');
+      if (!item) return;
+      const idx = Number(item.dataset.idx);
+      if (!Number.isInteger(idx) || !state.queue[idx]) return;
+      state.queueIndex = idx;
+      recordPlayedIndex(idx);
+      playTrack(state.queue[idx]);
+    });
+    upNextPanel.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && e.target.classList.contains('ob-un-item')) e.target.click();
+    });
+    document.addEventListener('pointerdown', (e) => {
+      if (!upNextPanel.classList.contains('open')) return;
+      if (upNextPanel.contains(e.target) || upNextBtn.contains(e.target) || e.target.closest('.riff-ctx-menu, .ob-fx-menu')) return;
+      setUpNextOpen(false);
+    });
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && upNextPanel.classList.contains('open')) setUpNextOpen(false);
     });
   }
+
+  // Track changes and natural advances move queueIndex without going through updateQueueBadge.
+  let lastQueueKey = '';
+  setInterval(() => {
+    const key = `${state.queueIndex}:${state.queue.length}:${state.currentTrack ? getTrackCanonicalId(state.currentTrack) : ''}:${state.isPlaying}`;
+    if (key === lastQueueKey) return;
+    lastQueueKey = key;
+    syncQueueUi();
+  }, 700);
 
   const obMoodForm = document.getElementById('ob-mood-form');
   if (obMoodForm) {
@@ -28058,10 +28273,7 @@ function bindCoverHoldZoom(wrapEl) {
         divider.parentNode.insertBefore(btn, divider);
       }
     });
-    // The Obsidian search row and mood input aren't views, so they ride along under Home and Soul Search.
-    const home = nav.querySelector('.nav-item[data-view="discover"]');
-    const searchRow = nav.querySelector('#nav-ob-search');
-    if (home && searchRow) home.after(searchRow);
+    // The mood input isn't a view, so it rides along under Soul Search.
     const soul = nav.querySelector('.nav-item[data-view="soul"]');
     const mood = nav.querySelector('#ob-mood-form');
     if (soul && mood) soul.after(mood);
