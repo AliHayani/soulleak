@@ -13,6 +13,13 @@ function writeIgnored(file, version) {
   try { fs.writeFileSync(file, JSON.stringify({ version })); } catch (e) {}
 }
 
+// Soulleak tags releases "soulleak-vX.Y.Z" (so they never trigger Riff's own v* workflow).
+const TAG_PREFIX = 'soulleak-v';
+function versionFromTag(tag) {
+  const m = /(d+.d+.d+)/.exec(String(tag || ''));
+  return m ? m[1] : '';
+}
+
 function isNewer(latest, current) {
   const p1 = String(latest || '').split('.').map(n => parseInt(n, 10) || 0);
   const p2 = String(current || '').split('.').map(n => parseInt(n, 10) || 0);
@@ -65,7 +72,8 @@ function initUpdater(getWindow) {
       });
       if (!res.ok) throw new Error('HTTP ' + res.status);
       const json = await res.json();
-      const latestVer = (json.tag_name || '').replace(/^v/i, '');
+      const latestVer = versionFromTag(json.tag_name);
+      if (!latestVer) throw new Error('No version in the latest release tag');
       const currentVersion = pkg.version || app.getVersion();
       if (isNewer(latestVer, currentVersion)) {
         current = { version: latestVer, releaseNotes: json.body || '', publishedAt: json.published_at || '', htmlUrl: json.html_url || '' };
@@ -78,7 +86,7 @@ function initUpdater(getWindow) {
           publishedAt: json.published_at || '',
           htmlUrl: json.html_url || '',
           canInstall: false,
-          url: json.html_url || `${releasesUrl}/tag/v${latestVer}`
+          url: json.html_url || `${releasesUrl}/tag/${TAG_PREFIX}${latestVer}`
         });
       } else {
         if (manualCheck) {
@@ -118,7 +126,7 @@ function initUpdater(getWindow) {
 
         let releaseNotes = info.releaseNotes || info.releaseName || '';
         let publishedAt = info.releaseDate || '';
-        let htmlUrl = `${releasesUrl}/tag/v${info.version}`;
+        let htmlUrl = `${releasesUrl}/tag/${TAG_PREFIX}${info.version}`;
 
         try {
           const res = await fetch(latestReleaseApi, {
@@ -139,7 +147,7 @@ function initUpdater(getWindow) {
         send('update-available', {
           version: info.version,
           canInstall,
-          url: `${releasesUrl}/tag/v${info.version}`,
+          url: `${releasesUrl}/tag/${TAG_PREFIX}${info.version}`,
           releaseNotes,
           publishedAt,
           htmlUrl

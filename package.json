@@ -1,6 +1,6 @@
 {
   "name": "soulleak",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "main": "src/main/main.js",
   "bin": {
     "soulleak": "src/main/cli.js"
@@ -29,7 +29,7 @@
     "tone": "^15.1.22"
   },
   "productName": "Soulleak",
-  "updateRepo": "",
+  "updateRepo": "AliHayani/soulleak",
   "build": {
     "appId": "com.soulleak.app",
     "productName": "Soulleak",
@@ -99,7 +99,14 @@
       "gatekeeperAssess": false,
       "artifactName": "${productName}-${version}-mac-${arch}.${ext}"
     },
-    "publish": null,
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "AliHayani",
+        "repo": "soulleak",
+        "releaseType": "release"
+      }
+    ],
     "afterPack": "scripts/mac-adhoc-sign.js"
   }
 }
