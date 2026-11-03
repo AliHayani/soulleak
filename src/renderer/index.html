@@ -3193,18 +3193,14 @@
 
           <div class="setting-item">
             <div class="setting-item-top">
-              <span class="setting-name">Pitch</span>
-              <span class="setting-value" id="val-pitch">0 st</span>
-            </div>
-            <input type="range" class="pill-range" id="slider-pitch" min="-12" max="12" step="1" value="0">
-          </div>
-
-          <div class="setting-item">
-            <div class="setting-item-top">
               <span class="setting-name">Volume gain</span>
               <span class="setting-value" id="val-gain">100%</span>
             </div>
             <input type="range" class="pill-range" id="slider-gain" min="0" max="200" step="1" value="100">
+          </div>
+
+          <div class="audio-tab-reset-row">
+            <button type="button" class="btn-outline-pill audio-tab-reset" data-reset-tab="tempo" title="Undo your speed and volume changes (back to the last preset)">Reset speed &amp; pitch</button>
           </div>
         </div>
 
@@ -3231,6 +3227,10 @@
               <span class="setting-value" id="val-echo">0%</span>
             </div>
             <input type="range" class="pill-range" id="slider-echo" min="0" max="100" step="1" value="0">
+          </div>
+
+          <div class="audio-tab-reset-row">
+            <button type="button" class="btn-outline-pill audio-tab-reset" data-reset-tab="effects" title="Undo your reverb, distortion and echo changes (back to the last preset)">Reset audio FX</button>
           </div>
         </div>
 
@@ -3272,12 +3272,16 @@
               </div>
             </div>
           </div>
+
+          <div class="audio-tab-reset-row">
+            <button type="button" class="btn-outline-pill audio-tab-reset" data-reset-tab="eq" title="Undo your equalizer changes (back to the last preset)">Reset equalizer</button>
+          </div>
         </div>
       </div>
     </div>
 
       <div class="settings-footer">
-        <button class="btn-outline-pill" id="btn-reset-audio">Reset audio settings</button>
+        <button class="btn-outline-pill" id="btn-reset-audio" title="Resets every tab, presets and the enhancer">Reset all audio</button>
       </div>
     </div>
   </div>

@@ -2625,3 +2625,8 @@ body .track-row .track-row-actions > button.btn-row-queue.btn-icon-pill:not(.btn
   opacity: 0;
   cursor: pointer;
 }
+
+/* Per-tab reset in the Audio panel: right-aligned, quiet until hovered. */
+.audio-tab-reset-row { display: flex; justify-content: flex-end; margin-top: 14px; }
+.audio-tab-reset { height: 32px; padding: 0 14px; font-size: 12.5px; opacity: 0.8; }
+.audio-tab-reset:hover { opacity: 1; }

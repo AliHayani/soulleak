@@ -679,7 +679,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       settings: {
         speed: typeof s.speed === 'number' ? s.speed : 1.0,
         speedPitch: typeof s.speedPitch === 'number' ? s.speedPitch : 1.0,
-        pitch: typeof s.pitch === 'number' ? s.pitch : (typeof s.pitchSemitones === 'number' ? s.pitchSemitones : 0),
+        // The separate Pitch control is gone (Speed (pitch) covers it), so presets never carry a pitch shift.
+        pitch: 0,
                           reverb: typeof s.reverb === 'number' ? s.reverb : 0,
                           distortion: typeof s.distortion === 'number' ? s.distortion : 0,
                           volume: typeof s.volume === 'number' ? s.volume : (typeof s.gain === 'number' ? s.gain : 1.0),
@@ -9130,6 +9131,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     const normalized = normalizePreset(preset);
     if (!normalized) return;
     state.activePresetId = normalized.id;
+    // The per-tab Reset buttons return to this preset rather than to zero.
+    localStorage.setItem('soulleak_preset_base', normalized.id);
     initAudioContext();
     renderPresets();
     if (activeTweenRaf) { cancelAnimationFrame(activeTweenRaf); activeTweenRaf = null; }
@@ -19992,9 +19995,50 @@ function bindCoverHoldZoom(wrapEl) {
     });
   }
 
+  // Per-tab reset: puts back only that tab's controls, to the last preset you applied (or the defaults).
+  // So with "Slowed + reverb" on, resetting Speed & Pitch restores Slowed's speed and leaves the reverb alone.
+  const AUDIO_TAB_KEYS = {
+    tempo: ['speed', 'speedPitch', 'pitch', 'volume'],
+    effects: ['reverb', 'distortion', 'echo', 'spatial8d'],
+    eq: ['eq', 'eqBands']
+  };
+  function presetBaseSettings() {
+    const all = getAllPresets();
+    const id = localStorage.getItem('soulleak_preset_base') || 'p_default';
+    const preset = all.find((p) => p.id === id) || all.find((p) => p.id === 'p_default');
+    return { id: preset.id, settings: normalizePreset(preset).settings };
+  }
+  function resetAudioTab(tab) {
+    const keys = AUDIO_TAB_KEYS[tab];
+    if (!keys) return;
+    initAudioContext();
+    const base = presetBaseSettings();
+    keys.forEach((k) => {
+      const v = base.settings[k];
+      state.audioSettings[k] = v && typeof v === 'object' ? JSON.parse(JSON.stringify(v)) : (v ?? 0);
+    });
+    // If nothing else was changed either, the preset is fully back in effect.
+    const same = Object.keys(base.settings).every((k) => JSON.stringify(state.audioSettings[k] ?? 0) === JSON.stringify(base.settings[k] ?? 0));
+    state.activePresetId = same ? base.id : null;
+    syncSettingsSlidersToState();
+    applyAudioSettings();
+    renderPresets();
+    const name = { tempo: 'Speed & pitch', effects: 'Audio FX', eq: 'Equalizer' }[tab];
+    showToast(base.id === 'p_default' ? `${name} reset` : `${name} reset to ${getAllPresets().find((p) => p.id === base.id).name}`);
+  }
+  document.querySelectorAll('[data-reset-tab]').forEach((btn) => {
+    btn.addEventListener('click', () => resetAudioTab(btn.dataset.resetTab));
+  });
+  // Any leftover pitch shift from before the Pitch control was removed would be inaudible to undo, so clear it.
+  if (state.audioSettings && state.audioSettings.pitch) {
+    state.audioSettings.pitch = 0;
+    applyAudioSettings();
+  }
+
   const btnResetAudio = el.btnResetAudio || document.getElementById('btn-reset-audio');
   if (btnResetAudio) {
     btnResetAudio.addEventListener('click', () => {
+      localStorage.setItem('soulleak_preset_base', 'p_default');
       state.activePresetId = 'p_default';
       state.audioSettings = { speed: 1.0, speedPitch: 1.0, pitch: 0, reverb: 0, distortion: 0, volume: 1.0, echo: 0, eq: { low: 0, mid: 0, high: 0 }, eqBands: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0] };
       state.hqSettings = { engine: 'hqmusic-3', preset: 'studio', vocal: 0, air: 0, bass: 0 };
