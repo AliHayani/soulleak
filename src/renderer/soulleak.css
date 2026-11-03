@@ -683,9 +683,13 @@
   animation: slRise 0.7s var(--sl-ease) 0.1s both;
 }
 
+/* The cover takes whatever height is left after the wave, title, progress and controls (about 470px with the
+   stage padding), so the play button always stays on screen. */
+.soul-fs-player { --fs-art: min(100%, 58vh, max(160px, calc(100vh - 470px))); }
+
 .soul-fs-art-wrap {
   aspect-ratio: 1;
-  width: min(100%, 58vh);
+  width: var(--fs-art);
   align-self: center;
   border-radius: 26px;
   overflow: hidden;
@@ -707,7 +711,7 @@
 }
 
 .soul-fs-wave {
-  width: min(100%, 58vh);
+  width: var(--fs-art);
   height: 56px;
   margin-top: 22px;
   align-self: center;
@@ -724,6 +728,11 @@
   font-weight: 750;
   letter-spacing: -0.03em;
   line-height: 1.1;
+  /* Long titles stop at two lines so they can't push the controls down. */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
 }
 
 .soul-fs-artist {
