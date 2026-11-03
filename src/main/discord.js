@@ -3,6 +3,8 @@ const RPC = require('discord-rpc');
 
 const CLIENT_ID = '1520100510877749358';
 const RECONNECT_DELAY_MS = 15000;
+// Art asset key for the Soulleak logo; upload an image under this name in the Discord app's Rich Presence art.
+const LOGO_ASSET = 'soulleak';
 
 let rpcClient = null;
 let isConnected = false;
@@ -55,13 +57,21 @@ function _setActivity(trackInfo) {
   const startEpoch = trackInfo.startTimestamp || now;
   const showArtistStatus = trackInfo.artistInStatus !== false;
   const cleanTitle = String(trackInfo.title || 'Unknown Track').substring(0, 128).padEnd(2, ' ');
-  const cleanArtist = String(trackInfo.artist || 'Unknown Artist').substring(0, 128).padEnd(2, ' ');
+  const effects = String(trackInfo.effects || '').trim().substring(0, 60);
+  const artistText = showArtistStatus ? String(trackInfo.artist || 'Unknown Artist') : `by ${trackInfo.artist || 'Unknown Artist'}`;
+  // Active presets ride along after the artist, e.g. "Tobiahs · Slowed + reverb".
+  const stateText = (effects ? `${artistText} · ${effects}` : artistText).substring(0, 128).padEnd(2, ' ');
   const baseActivity = {
     type: 2,
     details: cleanTitle,
-    state: showArtistStatus ? cleanArtist : (`by ${trackInfo.artist || 'Unknown Artist'}`).substring(0, 128).padEnd(2, ' '),
+    state: stateText,
     timestamps: { start: startEpoch },
-    assets: { large_image: trackInfo.thumbnail || undefined },
+    assets: {
+      large_image: trackInfo.thumbnail || LOGO_ASSET,
+      large_text: (effects ? `${cleanTitle.trim()} · ${effects}` : cleanTitle.trim()).substring(0, 128).padEnd(2, ' '),
+      small_image: LOGO_ASSET,
+      small_text: effects ? `Soulleak · ${effects}`.substring(0, 128) : 'Soulleak'
+    },
     instance: false,
   };
   if (trackInfo.duration && trackInfo.duration > 0) {

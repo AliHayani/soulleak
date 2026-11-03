@@ -1006,25 +1006,25 @@ body:not(.sidebar-expanded):not(.mini) .sidebar-nav #nav-soul { display: flex !i
 body.sidebar-expanded .sidebar-nav #nav-soul {
   display: flex !important;
   width: 100% !important;
-  height: 48px !important;
-  min-height: 48px !important;
+  height: 44px !important;
+  min-height: 44px !important;
   margin: 0 !important;
-  padding: 0 14px 0 7px !important;
-  gap: 11px;
+  padding: 0 14px !important;
+  gap: 14px;
   justify-content: flex-start !important;
-  border-radius: 16px !important;
-  background: color-mix(in srgb, var(--md-sys-color-on-surface) 6%, transparent) !important;
-  color: var(--md-sys-color-on-surface) !important;
+  border-radius: 10px !important;
+  background: transparent !important;
+  color: var(--md-sys-color-on-surface-variant) !important;
   transition: background-color 0.2s ease, color 0.2s ease !important;
 }
 
 body.sidebar-expanded .sidebar-nav #nav-soul .nav-indicator {
-  width: 34px !important;
-  height: 34px !important;
-  min-width: 34px;
-  border-radius: 11px !important;
-  background: color-mix(in srgb, var(--md-sys-color-primary) 28%, transparent) !important;
-  color: var(--md-sys-color-primary) !important;
+  width: 20px !important;
+  height: 20px !important;
+  min-width: 20px;
+  border-radius: 0 !important;
+  background: transparent !important;
+  color: inherit !important;
   transition: transform 0.45s var(--sl-spring), border-radius 0.3s ease !important;
 }
 
@@ -1045,17 +1045,13 @@ body.sidebar-expanded .sidebar-nav #nav-soul .nav-item-label {
   color: inherit !important;
 }
 
-body.sidebar-expanded .sidebar-nav #nav-soul:hover { background: color-mix(in srgb, var(--md-sys-color-on-surface) 11%, transparent) !important; }
-body.sidebar-expanded .sidebar-nav #nav-soul:hover .nav-indicator { transform: rotate(-10deg); border-radius: 50% !important; }
+body.sidebar-expanded .sidebar-nav #nav-soul:not(.active):hover { background: var(--ob-hover) !important; color: #fff !important; }
+body.sidebar-expanded .sidebar-nav #nav-soul:hover .nav-indicator { transform: rotate(-10deg); }
 
 body.sidebar-expanded .sidebar-nav #nav-soul.active {
-  background: var(--md-sys-color-primary) !important;
-  color: var(--md-sys-color-on-primary) !important;
-}
-
-body.sidebar-expanded .sidebar-nav #nav-soul.active .nav-indicator {
-  background: color-mix(in srgb, var(--md-sys-color-on-primary) 18%, transparent) !important;
-  color: var(--md-sys-color-on-primary) !important;
+  background: rgba(139, 92, 246, 0.12) !important;
+  color: #fff !important;
+  box-shadow: inset 2px 0 0 var(--ob-violet);
 }
 
 /* ---------- App-wide redesign: type, hover and motion ---------- */
@@ -1142,3 +1138,842 @@ body.sidebar-expanded .sidebar-nav #nav-soul.active .nav-indicator {
 /* Sidebar playlists: the cover tips toward you. */
 .sb-lib-cover { transition: transform 0.45s var(--sl-spring); }
 .sb-lib-row:hover .sb-lib-cover { transform: scale(1.05) rotate(-2deg); }
+
+/* =====================================================================
+   Obsidian Premium: pitch-black, edge-to-edge, three-column layout with
+   violet / indigo accents. Colors are redefined on body so they win over
+   the theme engine's inline variables on <html> without !important.
+   ===================================================================== */
+:root {
+  --ob-violet: #8b5cf6;
+  --ob-indigo: #6366f1;
+  --ob-line: rgba(255, 255, 255, 0.07);
+  --ob-line-strong: rgba(139, 92, 246, 0.45);
+  --ob-glow: 0 0 0 1px rgba(139, 92, 246, 0.85), 0 0 18px rgba(139, 92, 246, 0.35);
+  --ob-hover: rgba(255, 255, 255, 0.045);
+  --ob-grad: linear-gradient(135deg, var(--ob-violet), var(--ob-indigo));
+}
+
+body.theme-dark {
+  --md-sys-color-background: #000;
+  --md-sys-color-surface: #000;
+  --md-sys-color-surface-dim: #000;
+  --md-sys-color-surface-container-lowest: #000;
+  --md-sys-color-surface-container-low: #050507;
+  --md-sys-color-surface-container: #09090c;
+  --md-sys-color-surface-container-high: #0f0e14;
+  --md-sys-color-surface-container-highest: #15131c;
+  --md-sys-color-outline-variant: #1d1b26;
+}
+
+/* styles.css paints the page and panels through these (with !important), so redefine them.
+   A cover or video background keeps its own translucent values. */
+body.theme-dark:not(.cover-bg-on):not(.has-video-bg) {
+  --page-solid: #000;
+  --page-bg: #000;
+  --panel-bg: #000;
+}
+
+/* ---- Columns: flat panels separated by hairlines, nothing floats ---- */
+body.theme-dark #sidebar { border-right: 1px solid var(--ob-line) !important; }
+
+body.theme-dark #right-panel {
+  background: #000 !important;
+  border: 0 !important;
+  border-left: 1px solid var(--ob-line) !important;
+}
+
+body #right-panel {
+  border-radius: 0 !important;
+  margin: 0 !important;
+  box-shadow: none !important;
+}
+
+/* ---- Sidebar navigation ---- */
+body #sidebar .sidebar-nav #nav-discover {
+  height: 44px !important;
+  min-height: 44px !important;
+  max-height: 44px !important;
+  padding: 0 14px !important;
+  margin: 0 !important;
+  border-radius: 10px !important;
+  background: transparent !important;
+  color: var(--md-sys-color-on-surface-variant) !important;
+  display: flex !important;
+  align-items: center;
+  justify-content: flex-start !important;
+  gap: 14px;
+  box-shadow: none !important;
+  overflow: hidden;
+}
+
+body #sidebar .sidebar-nav #nav-discover::after,
+body #sidebar .sidebar-nav #nav-discover::before { display: none !important; }
+
+body.theme-dark #sidebar .sidebar-nav #nav-discover.active {
+  background: rgba(139, 92, 246, 0.12) !important;
+  color: #fff !important;
+  box-shadow: inset 2px 0 0 var(--ob-violet) !important;
+}
+
+body.theme-dark #sidebar .sidebar-nav #nav-discover:not(.active):hover { background: var(--ob-hover) !important; color: #fff !important; }
+
+#nav-discover > .nav-indicator,
+#nav-discover > .sb-home-banner-content,
+#nav-discover > .sb-home-banner-fx { display: none !important; }
+
+.ob-home-icon { display: grid; place-items: center; width: 20px; }
+#nav-discover .ob-home-label { display: inline !important; opacity: 1 !important; font-weight: 600; font-size: 14px; }
+
+.sidebar-nav .nav-item {
+  border-radius: 10px;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+body.theme-dark .sidebar-nav .nav-item.active,
+body.theme-dark #nav-soul.active {
+  background: rgba(139, 92, 246, 0.12) !important;
+  color: #fff !important;
+  box-shadow: inset 2px 0 0 var(--ob-violet);
+}
+
+body.theme-dark .sidebar-nav .nav-item:not(.active):hover,
+.ob-nav-row:hover { background: var(--ob-hover) !important; color: #fff; }
+
+
+.sidebar-nav .nav-active-indicator { display: none !important; }
+
+.ob-nav-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  height: 44px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--md-sys-color-on-surface-variant);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.ob-nav-row svg { flex-shrink: 0; }
+.ob-nav-row span { flex: 1; }
+
+.ob-nav-row kbd {
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 4px 6px;
+  border-radius: 5px;
+  border: 1px solid var(--ob-line);
+  color: var(--md-sys-color-on-surface-variant);
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.ob-nav-row:hover kbd { opacity: 0.7; }
+
+/* Mood input under Soul Search */
+.ob-mood {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 38px;
+  margin: 4px 0 6px;
+  padding: 0 4px 0 14px;
+  border-radius: 10px;
+  border: 1px solid var(--ob-line);
+  background: #07070a;
+  transition: border-color 0.15s ease, box-shadow 0.2s ease;
+}
+
+.ob-mood:hover { border-color: rgba(255, 255, 255, 0.14); }
+.ob-mood:focus-within { border-color: var(--ob-violet); box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.18); }
+
+.ob-mood-dot {
+  width: 7px;
+  height: 7px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--ob-grad);
+  box-shadow: 0 0 10px rgba(139, 92, 246, 0.8);
+}
+
+#ob-mood-input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--md-sys-color-on-surface);
+  font: inherit;
+  font-size: 13px;
+}
+
+#ob-mood-input::placeholder { color: rgba(255, 255, 255, 0.35); }
+
+.ob-mood-go {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--md-sys-color-on-surface-variant);
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.ob-mood-go:hover,
+.ob-mood:focus-within .ob-mood-go { background: var(--ob-grad); color: #fff; }
+
+body.theme-dark .rail-divider { background: var(--ob-line); }
+body.theme-dark .sb-horiz-tabs { border-bottom: 1px solid var(--ob-line); }
+
+/* Listening level at the bottom of the sidebar */
+.ob-level {
+  margin: 8px 0 4px;
+  padding: 12px;
+  border-top: 1px solid var(--ob-line);
+}
+
+.ob-level-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+
+.ob-level-emblem { display: grid; place-items: center; width: 38px; height: 38px; flex-shrink: 0; }
+
+.ob-level-text { display: flex; flex-direction: column; min-width: 0; }
+.ob-level-name { font-size: 13px; font-weight: 700; color: var(--md-sys-color-on-surface); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ob-level-sub { font-size: 11px; color: var(--md-sys-color-on-surface-variant); opacity: 0.75; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.ob-level-bar {
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.07);
+  overflow: hidden;
+}
+
+.ob-level-bar i {
+  display: block;
+  height: 100%;
+  background: var(--ob-grad);
+  transform-origin: left center;
+  transform: scaleX(0);
+  transition: transform 0.6s ease;
+}
+
+body:not(.sidebar-expanded) .ob-level,
+body:not(.sidebar-expanded) .ob-mood,
+body:not(.sidebar-expanded) .ob-nav-row span,
+body:not(.sidebar-expanded) .ob-nav-row kbd,
+body:not(.sidebar-expanded) .ob-home-label { display: none !important; }
+
+/* ---- Center: hyper-minimal track rows ---- */
+.track-row { border-radius: 8px; transition: background-color 0.12s ease, box-shadow 0.18s ease; }
+body.theme-dark .track-row:hover { background: var(--ob-hover); }
+
+.track-row .track-row-actions { opacity: 0; transition: opacity 0.15s ease; }
+.track-row:hover .track-row-actions,
+.track-row:focus-within .track-row-actions { opacity: 1; }
+
+/* Only favorite, effects and download/options stay in the hover strip. */
+.track-row .btn-row-share,
+.track-row .btn-row-art,
+.track-row .btn-row-add-playlist { display: none; }
+
+/* styles.css hides every row action but favorite with a 3x :not() selector, so match its weight. */
+body .track-row .track-row-actions > button.btn-row-fx.btn-icon-pill:not(.btn-fav),
+body .track-row .track-row-actions > button.btn-row-more.btn-icon-pill:not(.btn-fav) { display: flex !important; }
+
+.track-row .btn-row-fav svg[fill="currentColor"] { color: var(--ob-violet); }
+
+.track-row.track-selected,
+.track-row.playing {
+  background: rgba(139, 92, 246, 0.07) !important;
+  box-shadow: var(--ob-glow);
+}
+
+.track-row.playing .track-row-title { color: #c4b5fd; }
+
+/* Effect menu opened from a row */
+.ob-fx-menu {
+  position: fixed;
+  z-index: 10050;
+  display: flex;
+  flex-direction: column;
+  min-width: 170px;
+  padding: 5px;
+  border-radius: 10px;
+  border: 1px solid var(--ob-line-strong);
+  background: rgba(10, 9, 14, 0.96);
+  backdrop-filter: blur(16px);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6);
+  animation: slRise 0.14s ease;
+}
+
+.ob-fx-menu button {
+  height: 32px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--md-sys-color-on-surface);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ob-fx-menu button:hover { background: rgba(139, 92, 246, 0.16); }
+.ob-fx-menu button.is-active { color: #c4b5fd; }
+.ob-fx-menu button.is-active::before { content: '\25CF\00a0'; color: var(--ob-violet); }
+
+/* ---- Bottom console: full-width frosted glass ---- */
+body.theme-dark #playbar {
+  background: rgba(8, 7, 12, 0.72) !important;
+  backdrop-filter: blur(22px) saturate(140%) !important;
+  border-top: 1px solid var(--ob-line) !important;
+  box-shadow: 0 -1px 0 rgba(139, 92, 246, 0.08), 0 -20px 40px rgba(0, 0, 0, 0.5);
+}
+
+#playbar .playbar-left #btn-edit-current-track,
+#playbar .playbar-left #btn-playbar-more,
+#playbar .playbar-left #btn-playbar-share {
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+#playbar .playbar-left:hover #btn-edit-current-track,
+#playbar .playbar-left:hover #btn-playbar-more,
+#playbar .playbar-left:hover #btn-playbar-share,
+#playbar .playbar-left :focus-visible { opacity: 1; }
+
+.ob-fx-tags { display: flex; gap: 4px; margin-top: 3px; overflow: hidden; }
+.ob-fx-tags:empty { display: none; }
+
+.ob-fx-tag {
+  padding: 1px 6px;
+  border-radius: 4px;
+  border: 1px solid rgba(139, 92, 246, 0.4);
+  background: rgba(139, 92, 246, 0.12);
+  color: #c4b5fd;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+#btn-ob-miniplayer.active {
+  color: #fff;
+  background: rgba(139, 92, 246, 0.22);
+  box-shadow: inset 0 0 0 1px rgba(139, 92, 246, 0.6);
+}
+
+body.theme-dark #btn-play-pause {
+  background: var(--ob-grad);
+  color: #fff;
+  box-shadow: 0 0 22px rgba(139, 92, 246, 0.35);
+}
+
+/* ---- Obsidian identity: sharper geometry, numbered sections, ledger tiles ---- */
+body {
+  --md-shape-corner-l: 10px;
+  --md-shape-corner-m: 6px;
+}
+
+/* Section headers read like an index: "01  FOR YOU ———" */
+#sp-home { counter-reset: ob-sec; }
+
+#sp-home .sp-section > h2 {
+  counter-increment: ob-sec;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-family: var(--sl-body, inherit) !important;
+  font-size: 12px !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.18em !important;
+  text-transform: uppercase;
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+#sp-home .sp-section > h2 > svg { display: none; }
+
+#sp-home .sp-section > h2::before {
+  content: counter(ob-sec, decimal-leading-zero);
+  font-variant-numeric: tabular-nums;
+  color: var(--ob-violet);
+  letter-spacing: 0.06em;
+}
+
+#sp-home .sp-section > h2::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, var(--ob-line-strong), transparent 70%);
+}
+
+/* Quick picks: flat ledger rows instead of filled tiles */
+body #sp-home .sp-tile {
+  border-radius: 6px !important;
+  background: transparent !important;
+  border: 1px solid var(--ob-line) !important;
+  box-shadow: none !important;
+  transition: border-color 0.15s ease, background-color 0.15s ease, box-shadow 0.2s ease !important;
+}
+
+body #sp-home .sp-tile:hover {
+  background: rgba(139, 92, 246, 0.06) !important;
+  border-color: var(--ob-line-strong) !important;
+  box-shadow: inset 2px 0 0 var(--ob-violet) !important;
+}
+
+body #sp-home .sp-tile .sp-tile-cover,
+body #sp-home .sp-tile .sp-heart {
+  border-radius: 4px !important;
+  margin: 6px;
+  height: calc(100% - 12px) !important;
+  aspect-ratio: 1;
+  width: auto !important;
+}
+
+body #sp-home .sp-tile .sp-heart { background: var(--ob-grad) !important; color: #fff !important; }
+
+/* Cards: hairline frame, violet lift on hover */
+body #sp-home .sp-card .sp-card-cover {
+  border-radius: 6px !important;
+  box-shadow: 0 0 0 1px var(--ob-line) !important;
+  transition: transform 0.25s ease, box-shadow 0.25s ease !important;
+}
+
+body #sp-home .sp-card:hover .sp-card-cover {
+  transform: translateY(-3px);
+  box-shadow: 0 0 0 1px var(--ob-line-strong), 0 14px 30px -12px rgba(139, 92, 246, 0.55) !important;
+}
+
+.sp-card-title { font-weight: 650; }
+
+/* Top search: a squared field with a hairline, violet ring on focus */
+body .top-nav .search-box {
+  border-radius: 10px !important;
+  background: #07070a !important;
+  border: 1px solid var(--ob-line) !important;
+  box-shadow: none !important;
+}
+
+body .top-nav .search-box:focus-within {
+  border-color: var(--ob-violet) !important;
+  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.18) !important;
+}
+
+body .platform-pill-switch {
+  border-radius: 10px !important;
+  background: #07070a !important;
+  border: 1px solid var(--ob-line) !important;
+}
+
+body .platform-pill-switch .platform-btn { border-radius: 7px !important; }
+body .platform-pill-switch .platform-btn.active { background: rgba(139, 92, 246, 0.16) !important; color: #fff !important; }
+
+/* Squared play button */
+body.theme-dark .playbar #btn-play-pause {
+  border-radius: 14px !important;
+}
+
+/* Sidebar library rows */
+body #sidebar .sb-lib-row { border-radius: 8px !important; }
+body #sidebar .sb-lib-cover { border-radius: 6px !important; }
+body #sidebar .sb-lib-cover.liked-grad { background: var(--ob-grad) !important; }
+
+/* Soul Search hero uses the same hairline frame */
+body.theme-dark .soul-hero {
+  border-radius: 12px;
+  border: 1px solid var(--ob-line);
+}
+
+/* A faint violet aurora at the top of the center column */
+body.theme-dark:not(.cover-bg-on):not(.has-video-bg) #main-content {
+  background: radial-gradient(120% 60% at 15% -10%, rgba(139, 92, 246, 0.09), transparent 60%),
+              radial-gradient(80% 50% at 95% -10%, rgba(99, 102, 241, 0.06), transparent 60%);
+}
+
+/* Fullscreen player: a plain tile when the cover can't load */
+.soul-fs.no-art .soul-fs-art { visibility: hidden; }
+
+.soul-fs.no-art .soul-fs-art-wrap {
+  background: var(--ob-grad);
+  display: grid;
+  place-items: center;
+}
+
+.soul-fs.no-art .soul-fs-art-wrap::after {
+  content: '';
+  position: absolute;
+  width: 30%;
+  aspect-ratio: 1;
+  background: url("../../assets/soulleak-lilac.svg") center / contain no-repeat;
+  opacity: 0.9;
+}
+
+.soul-fs-art-wrap { position: relative; }
+
+#sp-home .sp-section > h2 span { text-transform: uppercase; }
+
+/* Playbar cover: no broken-image frame before a song loads; the fallback fills the square instead. */
+#playbar-artwork:not([src]),
+#playbar-artwork[src=""] { visibility: hidden; }
+
+body #playbar-artwork-wrapper .artwork-fallback {
+  position: absolute;
+  inset: 0;
+  width: auto;
+  height: auto;
+  border-radius: 8px;
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.22), rgba(99, 102, 241, 0.12));
+  border: 1px solid var(--ob-line-strong);
+  color: #c4b5fd;
+}
+
+/* Fullscreen play button follows the Obsidian accent */
+body .soul-fs .soul-fs-play,
+body .soul-fs .soul-fs-play:hover {
+  border-radius: 20px;
+  background: var(--ob-grad);
+  color: #fff;
+  box-shadow: 0 0 30px rgba(139, 92, 246, 0.45);
+}
+body .soul-fs .soul-fs-fill { background: var(--ob-grad); }
+
+body.theme-dark .soul-go { background: var(--ob-grad); color: #fff; }
+body.sidebar-expanded .sidebar-nav #nav-soul.active .nav-indicator { color: #c4b5fd !important; opacity: 1 !important; }
+
+/* ---- Stuck-song prompt ---- */
+.ob-stall {
+  position: fixed;
+  inset: 0;
+  z-index: 10060;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(6px);
+  animation: obFadeIn 0.18s ease;
+}
+
+.ob-stall-card {
+  width: min(380px, calc(100vw - 32px));
+  padding: 26px 24px 18px;
+  border-radius: 12px;
+  border: 1px solid var(--ob-line-strong);
+  background: #09080d;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.7), 0 0 40px rgba(139, 92, 246, 0.15);
+  text-align: center;
+  animation: slRise 0.22s ease;
+}
+
+.ob-stall-ring {
+  width: 34px;
+  height: 34px;
+  margin: 0 auto 14px;
+  border-radius: 50%;
+  border: 3px solid rgba(139, 92, 246, 0.2);
+  border-top-color: var(--ob-violet);
+  animation: slSpin 0.9s linear infinite;
+}
+
+.ob-stall-card h3 { margin: 0 0 6px; font-size: 17px; font-weight: 750; color: #fff; }
+.ob-stall-card p { margin: 0 0 18px; font-size: 13px; line-height: 1.45; color: var(--md-sys-color-on-surface-variant); }
+.ob-stall-card p strong { color: #fff; font-weight: 650; }
+
+.ob-stall-actions { display: flex; gap: 8px; }
+
+.ob-stall-actions button {
+  flex: 1;
+  height: 36px;
+  border-radius: 8px;
+  border: 1px solid var(--ob-line);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--md-sys-color-on-surface);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 650;
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.ob-stall-actions button:hover { background: rgba(255, 255, 255, 0.08); border-color: rgba(255, 255, 255, 0.16); }
+
+.ob-stall-actions .ob-stall-primary { border-color: transparent; background: var(--ob-grad); color: #fff; }
+.ob-stall-actions .ob-stall-primary:hover { background: var(--ob-grad); filter: brightness(1.1); }
+
+.ob-stall-wait {
+  margin-top: 12px;
+  border: 0;
+  background: none;
+  color: var(--md-sys-color-on-surface-variant);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  opacity: 0.7;
+}
+
+.ob-stall-wait:hover { opacity: 1; text-decoration: underline; }
+
+/* ---- Rank emblems ---- */
+.ob-emblem {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.55));
+}
+
+.ob-emblem[data-rank="soul-leaker"]:not(.is-locked) { filter: drop-shadow(0 0 8px rgba(255, 140, 60, 0.55)); }
+.ob-emblem[data-rank="true-larper"]:not(.is-locked) { filter: drop-shadow(0 0 10px rgba(200, 120, 255, 0.7)); }
+.ob-emblem.is-locked { filter: none; }
+
+.ob-level { cursor: pointer; border-radius: 8px; transition: background-color 0.15s ease; }
+.ob-level:hover { background: var(--ob-hover); }
+.ob-level:hover .ob-level-emblem { transform: translateY(-2px) rotate(-4deg); }
+.ob-level-emblem { transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1); }
+
+.ob-level-name { display: flex; align-items: baseline; gap: 6px; }
+
+.ob-level-tier,
+.ob-bp-rank-tier,
+.ob-bp-kicker {
+  --accent: #c4b5fd;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+
+/* ---- Badge medals ---- */
+.ob-badges {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.ob-badges:empty { display: none; }
+
+.ob-medal {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  clip-path: polygon(50% 0, 93% 25%, 93% 75%, 50% 100%, 7% 75%, 7% 25%);
+  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.2s ease;
+}
+
+.ob-medal > svg { width: 16px; height: 16px; }
+
+.ob-medal.is-earned {
+  background: var(--ob-grad);
+  color: #fff;
+}
+
+/* A light sweep crosses earned medals now and then. */
+.ob-medal.is-earned::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(115deg, transparent 35%, rgba(255, 255, 255, 0.55) 50%, transparent 65%);
+  transform: translateX(-120%);
+  animation: obMedalShine 4.5s ease-in-out infinite;
+}
+
+@keyframes obMedalShine {
+  0%, 70% { transform: translateX(-120%); }
+  100% { transform: translateX(120%); }
+}
+
+.ob-medal.is-locked {
+  background: #14131a;
+  color: #2c2a35;
+}
+
+.ob-medal-lock {
+  position: absolute;
+  right: 6px;
+  bottom: 5px;
+  width: 11px;
+  height: 11px;
+  color: #4b475a;
+}
+
+.ob-medal-lock svg { width: 100%; height: 100%; fill: currentColor; }
+
+.ob-badges .ob-medal:hover { transform: translateY(-2px) scale(1.08); }
+.ob-badges .ob-medal.is-earned:hover { filter: drop-shadow(0 0 8px rgba(139, 92, 246, 0.8)); }
+
+/* ---- Settings > Badges ---- */
+.ob-bp { display: flex; flex-direction: column; gap: 14px; margin-top: 12px; }
+
+.ob-bp-hero {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  padding: 20px 22px;
+  border-radius: 12px;
+  border: 1px solid var(--ob-line-strong);
+  background: radial-gradient(120% 140% at 0% 0%, rgba(139, 92, 246, 0.16), transparent 60%), #08070c;
+}
+
+.ob-bp-hero-emblem { width: 96px; height: 96px; flex-shrink: 0; }
+.ob-bp-hero-body { flex: 1; min-width: 0; }
+.ob-bp-kicker { font-size: 11px; }
+
+.ob-bp-title {
+  margin: 2px 0 6px;
+  font-family: var(--sl-display, inherit);
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: #fff;
+}
+
+.ob-bp-hours { font-size: 14px; color: var(--md-sys-color-on-surface-variant); margin-bottom: 12px; }
+.ob-bp-hours strong { color: #fff; font-weight: 700; }
+.ob-bp-hours span { opacity: 0.6; }
+
+.ob-bp-bar {
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.07);
+  overflow: hidden;
+}
+
+.ob-bp-bar i {
+  display: block;
+  height: 100%;
+  background: var(--ob-grad);
+  transform-origin: left center;
+  box-shadow: 0 0 10px rgba(139, 92, 246, 0.6);
+}
+
+.ob-bp-next { margin-top: 8px; font-size: 13px; color: var(--md-sys-color-on-surface-variant); }
+.ob-bp-next strong { color: #c4b5fd; }
+.ob-bp-next span { opacity: 0.6; }
+
+.ob-bp-heading {
+  margin-top: 8px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.ob-bp-badges,
+.ob-bp-ranks { display: flex; flex-direction: column; gap: 8px; }
+
+.ob-bp-badge,
+.ob-bp-rank {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--ob-line);
+  background: #07070a;
+}
+
+.ob-bp-badge .ob-medal { width: 44px; height: 44px; }
+.ob-bp-badge .ob-medal > svg { width: 21px; height: 21px; }
+.ob-bp-badge .ob-medal-lock { width: 13px; height: 13px; right: 9px; bottom: 8px; }
+.ob-bp-badge.is-earned { border-color: var(--ob-line-strong); }
+
+.ob-bp-badge-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 5px; }
+.ob-bp-badge-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.ob-bp-badge-name { font-size: 14px; font-weight: 750; color: #fff; }
+.ob-bp-badge:not(.is-earned) .ob-bp-badge-name { color: var(--md-sys-color-on-surface-variant); }
+.ob-bp-badge-need,
+.ob-bp-badge-have { font-size: 12px; color: var(--md-sys-color-on-surface-variant); }
+.ob-bp-badge-have strong { color: var(--md-sys-color-on-surface); font-weight: 600; }
+
+.ob-bp-state {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--md-sys-color-on-surface-variant);
+  white-space: nowrap;
+}
+
+.ob-bp-state.is-done { color: #c4b5fd; }
+.ob-bp-state.is-current { color: #fff; padding: 3px 8px; border-radius: 5px; background: var(--ob-grad); }
+
+.ob-bp-rank .ob-emblem { width: 44px; height: 44px; flex-shrink: 0; }
+.ob-bp-rank:not(.is-reached) { opacity: 0.75; }
+.ob-bp-rank.is-current { border-color: var(--ob-line-strong); box-shadow: inset 2px 0 0 var(--ob-violet); }
+.ob-bp-rank-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.ob-bp-rank-title { font-size: 14px; font-weight: 700; color: #fff; }
+.ob-bp-rank:not(.is-reached) .ob-bp-rank-title { color: var(--md-sys-color-on-surface-variant); }
+.ob-bp-rank-need { font-size: 12px; color: var(--md-sys-color-on-surface-variant); }
+
+/* ---- Graceful exit: the whole app goes to black, then the logo arrives ---- */
+@keyframes obFadeIn { from { opacity: 0; } }
+
+@keyframes obExitBlack {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes obExitLogo {
+  from { opacity: 0; transform: scale(0.72); filter: blur(8px) drop-shadow(0 0 0 rgba(139, 92, 246, 0)); }
+  60% { opacity: 1; transform: scale(1.04); filter: blur(0) drop-shadow(0 0 34px rgba(139, 92, 246, 0.9)); }
+  to { opacity: 1; transform: scale(1); filter: blur(0) drop-shadow(0 0 26px rgba(139, 92, 246, 0.75)); }
+}
+
+@keyframes obExitWord {
+  from { opacity: 0; letter-spacing: 0.7em; }
+  to { opacity: 0.9; letter-spacing: 0.32em; }
+}
+
+/* Stage 1 (0-0.45 s): solid black over everything. Stage 2: the logo comes in, then the wordmark. */
+.ob-exit {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483000;
+  display: grid;
+  place-items: center;
+  background: #000;
+  opacity: 0;
+  animation: obExitBlack 0.45s ease-out forwards;
+  pointer-events: all;
+  cursor: none;
+}
+
+.ob-exit-mark {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+}
+
+.ob-exit-logo {
+  width: 104px;
+  height: 104px;
+  opacity: 0;
+  animation: obExitLogo 0.85s cubic-bezier(0.22, 1, 0.36, 1) 0.45s forwards;
+}
+
+.ob-exit-word {
+  font-family: var(--sl-display, inherit);
+  font-size: 15px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #c4b5fd;
+  opacity: 0;
+  animation: obExitWord 0.7s ease-out 0.85s forwards;
+}

@@ -654,6 +654,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     { id: 'p_speedup_pitch', name: 'Speed up', settings: { speed: 1.0, speedPitch: 1.30, pitch: 0, reverb: 0, distortion: 0, volume: 1.0, echo: 0, eq: { low: 0, mid: 0, high: 0 }, eqBands: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0] } },
     { id: 'p_slowed', name: 'Slowed + reverb', settings: { speed: 1.0, speedPitch: 0.82, pitch: 0, reverb: 65, distortion: 0, volume: 1.0, echo: 15, eq: { low: 0, mid: 0, high: 0 }, eqBands: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0] } },
     { id: 'p_nightcore', name: 'Nightcore', settings: { speed: 1.0, speedPitch: 1.25, pitch: 0, reverb: 20, distortion: 0, volume: 1.0, echo: 0, eq: { low: 0, mid: 0, high: 0 }, eqBands: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0] } },
+    { id: 'p_8d', name: '8D Audio', settings: { speed: 1.0, speedPitch: 1.0, pitch: 0, reverb: 12, distortion: 0, volume: 1.0, echo: 0, spatial8d: 1, eq: { low: 0, mid: 0, high: 0 }, eqBands: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0] } },
     { id: 'p_distortion', name: 'Distortion', settings: { speed: 1.0, speedPitch: 1.0, pitch: 0, reverb: 0, distortion: 75, volume: 1.25, echo: 0, eq: { low: 0, mid: 0, high: 0 }, eqBands: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0] } }
   ];
 
@@ -685,6 +686,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                           distortion: typeof s.distortion === 'number' ? s.distortion : 0,
                           volume: typeof s.volume === 'number' ? s.volume : (typeof s.gain === 'number' ? s.gain : 1.0),
                           echo: typeof s.echo === 'number' ? s.echo : 0,
+                          spatial8d: typeof s.spatial8d === 'number' ? s.spatial8d : 0,
                           eq: {
                             low: typeof eq.low === 'number' ? eq.low : 0,
                             mid: typeof eq.mid === 'number' ? eq.mid : 0,
@@ -814,7 +816,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     themeMode: localStorage.getItem('riff_theme_mode') || 'dark',
     paletteStyle: localStorage.getItem('riff_palette_style') || 'classic',
     meshBrightness: parseInt(localStorage.getItem('riff_mesh_brightness') || '100', 10),
-    themeAccent: localStorage.getItem('riff_theme_accent') || '#5247d1',
+    themeAccent: localStorage.getItem('riff_theme_accent') || '#8b5cf6',
     themeIntensity: parseInt(localStorage.getItem('riff_theme_intensity') || '85', 10),
     themeBrightness: parseInt(localStorage.getItem('riff_theme_brightness') || '20', 10),
     trEnabled: localStorage.getItem('riff_tr_enabled') === 'true',
@@ -921,6 +923,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       thumbnail: rpcThumb,
       url: shareUrl,
       platform: track.platform || state.platform,
+      effects: currentEffectsLabel(),
       startTimestamp: Math.floor(Date.now() / 1000 - curSec)
     });
   }
@@ -2787,7 +2790,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     audioEngine.setVolume(state.volume, state.isMuted);
     audioEngine.applySettings(el.nativeAudio);
     persistSoundSettings();
-    
+    updateFxTags();
+
     if (el.settingsModifiedDot) {
       if (audioEngine.isModified()) {
         el.settingsModifiedDot.classList.remove('hidden');
@@ -4133,6 +4137,13 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   let crossfadeTriggered = false;
   let crossfadeFadeInPending = false;
+  let crossfadeFadingOut = false;
+
+  // Crossfade length in seconds. Soulleak defaults to 3 s until a different value is picked in Settings (0 = off).
+  function getCrossfadeSeconds() {
+    const raw = localStorage.getItem('riff_crossfade');
+    return raw === null ? 3 : (parseInt(raw, 10) || 0);
+  }
   let currentAlbumPlayRunId = 0;
 
   function pushPlayHistory(track) {
@@ -4366,17 +4377,18 @@ document.addEventListener('DOMContentLoaded', async () => {
       try { cfTailAudio.pause(); cfTailAudio.removeAttribute('src'); cfTailAudio.load(); } catch (_) {}
     }
   }
+  // Returns true when the outgoing track keeps playing underneath the next one; false when it can't be duplicated.
   function startCrossfadeTailFromCurrent(fadeSec) {
-    if (!el.nativeAudio || !el.nativeAudio.src || el.nativeAudio.paused) return;
+    if (!el.nativeAudio || !el.nativeAudio.src || el.nativeAudio.paused) return false;
     const src = el.nativeAudio.src;
-    if (src.startsWith('blob:')) return;
+    if (src.startsWith('blob:')) return false;
     stopCrossfadeTail();
     if (!cfTailAudio) {
       cfTailAudio = new Audio();
       cfTailAudio.crossOrigin = 'anonymous';
     }
     const startVol = state.isMuted ? 0 : Math.max(0, Math.min(1, state.volume * state.volume * (state.audioSettings?.volume || 1)));
-    if (startVol <= 0.01) return;
+    if (startVol <= 0.01) return true;
     try {
       cfTailAudio.src = src;
       cfTailAudio.playbackRate = el.nativeAudio.playbackRate || 1;
@@ -4393,8 +4405,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         cfTailAudio.volume = Math.max(0, startVol * Math.cos(p * Math.PI * 0.5));
         if (p >= 1) stopCrossfadeTail();
       }, 40);
+      return true;
     } catch (_) {
       stopCrossfadeTail();
+      return false;
     }
   }
 
@@ -4464,6 +4478,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       state.isRadioQueue = false;
     }
     crossfadeTriggered = false;
+    crossfadeFadingOut = false;
     state.nextTrackPrefetched = false;
     initAudioContext();
     el.nativeAudio.preload = 'auto';
@@ -7131,8 +7146,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   window.openTvKaraoke = openTvKaraoke;
   window.closeTvKaraoke = closeTvKaraoke;
 
+  // Soulleak's fullscreen player (cover, beat wave, synced lyrics) replaces Riff's TV karaoke view.
   if (el.btnTvKaraoke) {
-    el.btnTvKaraoke.addEventListener('click', openTvKaraoke);
+    el.btnTvKaraoke.addEventListener('click', () => openSoulFullscreen());
   }
   if (el.tvKaraokeClose) {
     el.tvKaraokeClose.addEventListener('click', closeTvKaraoke);
@@ -8672,9 +8688,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (audioEngine.resumeAudioContext) audioEngine.resumeAudioContext();
         audioEngine._applyMasterVolume();
       }
-      if (crossfadeFadeInPending) {
+      if (crossfadeFadeInPending && !crossfadeFadingOut) {
         crossfadeFadeInPending = false;
-        const X = parseInt(localStorage.getItem('riff_crossfade') || '0', 10);
+        const X = getCrossfadeSeconds();
         if (X > 0 && audioEngine) audioEngine.fadeIn(X);
       }
       if (typeof m3cStart === 'function') m3cStart();
@@ -8781,6 +8797,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     el.nativeAudio.addEventListener('seeked', () => {
+      // Seeking back out of an end-of-track fade brings the volume back and re-arms the crossfade.
+      if (crossfadeFadingOut) {
+        const dur = getReliableTrackDuration();
+        if (!dur || el.nativeAudio.currentTime < dur - getCrossfadeSeconds() - 0.5) {
+          crossfadeFadingOut = false;
+          crossfadeTriggered = false;
+          crossfadeFadeInPending = false;
+          if (audioEngine) audioEngine.fadeIn(0.25);
+        }
+      }
       updateMediaPositionState();
       state.forceLyricsScroll = true;
       state.forceSnapLyrics = true;
@@ -8820,16 +8846,22 @@ document.addEventListener('DOMContentLoaded', async () => {
       const cur = (el.nativeAudio && Number.isFinite(el.nativeAudio.currentTime)) ? el.nativeAudio.currentTime : 0;
       const dur = getReliableTrackDuration();
 
-      const X = parseInt(localStorage.getItem('riff_crossfade') || '0', 10);
+      const X = getCrossfadeSeconds();
       if (X > 0 && !crossfadeTriggered && !state.isRepeat && dur > Math.max(X * 2, 20) && cur >= dur - X && (!audioEngine || !audioEngine.isLiveStream(el.nativeAudio))) {
         crossfadeTriggered = true;
         crossfadeFadeInPending = true;
-        startCrossfadeTailFromCurrent(X);
-        state._isNaturalEnding = true;
-        try {
-          playNext();
-        } finally {
-          state._isNaturalEnding = false;
+        if (startCrossfadeTailFromCurrent(X)) {
+          state._isNaturalEnding = true;
+          try {
+            playNext();
+          } finally {
+            state._isNaturalEnding = false;
+          }
+        } else if (audioEngine) {
+          // This stream can't be duplicated for an overlap: fade it out over its last X seconds instead;
+          // the next track fades in when it starts.
+          crossfadeFadingOut = true;
+          audioEngine.fadeOut(X);
         }
       }
 
@@ -9073,7 +9105,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const k = Math.min(1, (t - t0) / ms), e = k * k * (3 - 2 * k);
       const cur = {};
       for (const key in to) {
-        if (typeof to[key] === 'number') cur[key] = from[key] + (to[key] - from[key]) * e;
+        if (typeof to[key] === 'number') cur[key] = (from[key] ?? 0) + (to[key] - (from[key] ?? 0)) * e;
         else if (Array.isArray(to[key])) {
           cur[key] = to[key].map((v, idx) => (from[key]?.[idx] ?? 0) + (v - (from[key]?.[idx] ?? 0)) * e);
         } else if (typeof to[key] === 'object' && to[key] !== null) {
@@ -11203,6 +11235,9 @@ document.addEventListener('DOMContentLoaded', async () => {
       <button class="btn-icon-pill btn-row-fav btn-fav btn-fav-track" title="favorite">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="${isFav ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"></path></svg>
       </button>
+      <button class="btn-icon-pill btn-row-fx" title="Play with an effect" aria-label="Play with an effect">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/><circle cx="12" cy="12" r="2.5"/></svg>
+      </button>
       <button class="btn-icon-pill btn-row-art" title="Customize cover & banner">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
       </button>
@@ -11337,6 +11372,14 @@ document.addEventListener('DOMContentLoaded', async () => {
             const isFavNow = state.favorites.some(f => isSameTrack(f, track));
             const svg = btnFav.querySelector('svg');
             if (svg) svg.setAttribute('fill', isFavNow ? 'currentColor' : 'none');
+          });
+        }
+
+        const btnFx = row.querySelector('.btn-row-fx');
+        if (btnFx) {
+          btnFx.addEventListener('click', (e) => {
+            e.stopPropagation();
+            openRowFxMenu(btnFx, row);
           });
         }
 
@@ -17256,7 +17299,7 @@ function bindCoverHoldZoom(wrapEl) {
   const storedTrayOnClose = localStorage.getItem('riff_tray_on_close');
   const savedTrayOnClose = storedTrayOnClose !== null
     ? storedTrayOnClose === 'true'
-    : /Windows|Mac/.test(navigator.userAgent);
+    : false;
   if (btnTrayOnClose) {
     btnTrayOnClose.classList.toggle('active', savedTrayOnClose);
     btnTrayOnClose.addEventListener('click', () => {
@@ -17596,6 +17639,8 @@ function bindCoverHoldZoom(wrapEl) {
       if (ctl && ctl.innerHTML) ctl.innerHTML = '';
     }
     if (cat === 'plugins' && typeof reloadPluginsList === 'function') reloadPluginsList();
+    // At startup this can run before the badge code below has set up; loadStats() draws the page then.
+    if (cat === 'badges') { try { renderBadgesPage(); } catch (_) {} }
     if (cat === 'account' && typeof syncLocalAccountUI === 'function') syncLocalAccountUI();
     requestAnimationFrame(() => refreshStacks());
   }
@@ -18227,14 +18272,636 @@ function bindCoverHoldZoom(wrapEl) {
     window.electronAPI.onMediaCommand((cmd) => handleMediaCommand(cmd, 'ipc'));
   }
   if (window.electronAPI && window.electronAPI.onMediaControl) {
-    window.electronAPI.onMediaControl((action) => {
+    window.electronAPI.onMediaControl((action, value) => {
       if (action === 'play-pause') togglePlayPause();
       else if (action === 'next') playNext();
       else if (action === 'prev') playPrev();
       else if (action === 'volume-up') adjustVolume(0.05);
       else if (action === 'volume-down') adjustVolume(-0.05);
+      else if (action === 'set-volume' && Number.isFinite(Number(value))) adjustVolume(Number(value) - state.volume);
     });
   }
+
+  // Keep the gaming mini-player in step with playback (cheap: only sends when something changed).
+  if (window.electronAPI && window.electronAPI.overlayState) {
+    let lastOverlayState = '';
+    setInterval(() => {
+      const t = state.currentTrack;
+      const audio = el.nativeAudio;
+      const snapshot = {
+        title: (t && t.title) || '',
+        artist: (t && t.artist) || '',
+        playing: !!state.isPlaying,
+        volume: state.isMuted ? 0 : state.volume,
+        position: audio && Number.isFinite(audio.currentTime) ? Math.round(audio.currentTime) : 0,
+        duration: audio && Number.isFinite(audio.duration) ? Math.round(audio.duration) : 0
+      };
+      const key = JSON.stringify(snapshot);
+      if (key === lastOverlayState) return;
+      lastOverlayState = key;
+      window.electronAPI.overlayState(snapshot);
+    }, 500);
+  }
+
+  // ---- Obsidian Premium layout: sidebar search row, mood input, listening level, fx tags, mini-player button ----
+  const obSearchRow = document.getElementById('nav-ob-search');
+  if (obSearchRow) {
+    obSearchRow.addEventListener('click', () => {
+      const input = document.getElementById('search-input');
+      if (!input) return;
+      input.focus();
+      input.select();
+    });
+  }
+
+  const obMoodForm = document.getElementById('ob-mood-form');
+  if (obMoodForm) {
+    obMoodForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const input = document.getElementById('ob-mood-input');
+      const mood = input ? input.value.trim() : '';
+      if (!mood) { if (input) input.focus(); return; }
+      switchView('soul');
+      runSoulSearch(mood);
+      input.value = '';
+      input.blur();
+    });
+  }
+
+  // Ranks: every minute of actual playback counts. `at` is cumulative listening minutes.
+  // `accent` colors the rank's label; `colors` (light, dark) fill its emblem.
+  const OB_RANKS = [
+    { id: 'spawn', title: 'Spawn', at: 0, accent: '#e0a578', colors: ['#e0a578', '#7a4524'] },
+    { id: 'wanderer', title: 'Wanderer', at: 30, accent: '#d5dbe4', colors: ['#eef1f6', '#7d8796'] },
+    { id: 'aux-owner', title: 'Aux Owner', at: 90, accent: '#ffd35c', colors: ['#ffe17a', '#c4861a'] },
+    { id: 'gatekeeper', title: 'Gatekeeper', at: 210, accent: '#8ff0e0', colors: ['#b4fff2', '#2f9c8f'] },
+    { id: 'scrobbler', title: 'Scrobbler', at: 420, accent: '#8fbaff', colors: ['#b9d8ff', '#3563e0'] },
+    { id: 'soul-leaker', title: 'Soul Leaker', at: 1440, accent: '#ffa24a', colors: ['#ffc06a', '#e2421c'] },
+    { id: 'true-larper', title: 'True Larper', at: 3000, accent: '#f0a6ff', colors: ['#f6b3ff', '#6d28d9'] }
+  ];
+  // Listening stats live in IndexedDB as counters of real playback seconds: 'total', 'artist:<name>', 'song:<id>'.
+  const STATS_DB = 'soulleak-stats';
+  const statsCounters = new Map();
+  const statsDirty = new Set();
+  let statsDb = null;
+  let statsTicks = 0;
+
+  function openStatsDb() {
+    return new Promise((resolve, reject) => {
+      const req = indexedDB.open(STATS_DB, 1);
+      req.onupgradeneeded = () => req.result.createObjectStore('counters', { keyPath: 'key' });
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+  }
+
+  function bumpStat(key, seconds, label) {
+    const cur = statsCounters.get(key) || { seconds: 0, label: '' };
+    cur.seconds += seconds;
+    if (label) cur.label = label;
+    statsCounters.set(key, cur);
+    statsDirty.add(key);
+  }
+
+  function statSeconds(key) {
+    const c = statsCounters.get(key);
+    return c ? c.seconds : 0;
+  }
+
+  function topStat(prefix) {
+    let best = null;
+    statsCounters.forEach((c, key) => {
+      if (key.startsWith(prefix) && (!best || c.seconds > best.seconds)) best = c;
+    });
+    return best;
+  }
+
+  function flushStats() {
+    if (!statsDb || !statsDirty.size) return;
+    try {
+      const store = statsDb.transaction('counters', 'readwrite').objectStore('counters');
+      statsDirty.forEach((key) => {
+        const c = statsCounters.get(key);
+        store.put({ key, seconds: c.seconds, label: c.label });
+      });
+      statsDirty.clear();
+    } catch (err) {
+      console.warn('[stats] save failed', err);
+    }
+  }
+
+  async function loadStats() {
+    try {
+      statsDb = await openStatsDb();
+      const rows = await new Promise((resolve, reject) => {
+        const req = statsDb.transaction('counters').objectStore('counters').getAll();
+        req.onsuccess = () => resolve(req.result || []);
+        req.onerror = () => reject(req.error);
+      });
+      // Seconds counted while the database was opening are added on top of what was stored.
+      rows.forEach((r) => {
+        const early = statsCounters.get(r.key);
+        statsCounters.set(r.key, { seconds: r.seconds + (early ? early.seconds : 0), label: (early && early.label) || r.label || '' });
+      });
+      // First run on IndexedDB: carry over the total from the earlier localStorage counter.
+      if (!rows.some((r) => r.key === 'total')) {
+        const legacy = parseInt(localStorage.getItem('soulleak_listen_seconds') || '0', 10) || 0;
+        if (legacy) bumpStat('total', legacy, 'All listening');
+      }
+      flushStats();
+    } catch (err) {
+      console.warn('[stats] IndexedDB unavailable', err);
+    }
+    renderListenLevel();
+    renderBadges(false);
+    if (badgesPageOpen()) renderBadgesPage();
+  }
+
+  // The first-listed artist gets the credit, so "A & B" and "A feat. C" both count toward A.
+  function primaryArtist(track) {
+    const raw = stripYoutubeTopic(track.artist || '').trim();
+    return raw.split(/\s*(?:,|&|\bfeat\.?|\bft\.?|\bx\b|\bwith\b)\s*/i)[0].trim() || raw;
+  }
+
+  // "1 h 05 min", "12 min 30 s", "45 s"
+  function fmtListen(sec) {
+    const s = Math.max(0, Math.floor(sec));
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    if (h) return `${h} h ${String(m).padStart(2, '0')} min`;
+    if (m) return `${m} min ${String(s % 60).padStart(2, '0')} s`;
+    return `${s} s`;
+  }
+
+  function fmtHours(sec) {
+    const h = sec / 3600;
+    return `${Number.isInteger(h) ? h : h.toFixed(1)} h`;
+  }
+
+  function rankIndexFor(seconds) {
+    let i = 0;
+    while (i + 1 < OB_RANKS.length && seconds / 60 >= OB_RANKS[i + 1].at) i++;
+    return i;
+  }
+
+  // A faceted crest that gains ornaments as the rank climbs: wings from Scrobbler, a crown from Soul Leaker,
+  // sparkles at True Larper. Locked ranks are a dark silhouette with a padlock where the gem would be.
+  let obSvgSeq = 0;
+  // Gradient ids must be unique in the document; a per-load prefix keeps them apart from any other SVG.
+  const OB_SVG_PREFIX = `ob${Math.random().toString(36).slice(2, 7)}`;
+  function rankEmblemSvg(index, locked) {
+    const rank = OB_RANKS[index];
+    const id = `${OB_SVG_PREFIX}r${++obSvgSeq}`;
+    const [light, dark] = locked ? ['#262430', '#111017'] : rank.colors;
+    const fill = `url(#${id}g)`;
+    const p = [`<defs><linearGradient id="${id}g" x1="0" y1="0" x2="0.35" y2="1"><stop offset="0" stop-color="${light}"/><stop offset="1" stop-color="${dark}"/></linearGradient></defs>`];
+    if (index >= 4) p.push(`<path d="M12 20 2 15l5 14-4 9 11-3z M52 20l10-5-5 14 4 9-11-3z" fill="${fill}"/>`);
+    if (index >= 5) p.push(`<path d="M20 10l3-8 5 6 4-8 4 8 5-6 3 8z" fill="${fill}"/>`);
+    p.push(`<path d="M32 6 54 15 51 42 32 60 13 42 10 15z" fill="${fill}" stroke="${locked ? '#34313f' : 'rgba(255,255,255,0.6)'}" stroke-width="1.5" stroke-linejoin="round"/>`);
+    p.push('<path d="M32 14 46 20 44 39 32 51 20 39 18 20z" fill="rgba(0,0,0,0.3)"/>');
+    if (locked) {
+      p.push('<path d="M27.5 32v-3.5a4.5 4.5 0 0 1 9 0V32" fill="none" stroke="#4b475a" stroke-width="2.6"/><rect x="25" y="31.5" width="14" height="10.5" rx="2.2" fill="#4b475a"/>');
+    } else {
+      p.push('<path d="M32 21 40 31 32 43 24 31z" fill="#fff" opacity="0.92"/><path d="M32 21 40 31 32 31z" fill="#fff"/>');
+      p.push('<path d="M32 6 54 15 53 21 32 12.5 11 21 10 15z" fill="#fff" opacity="0.28"/>');
+      if (index >= 6) {
+        const star = (x, y, r) => `M${x} ${y - r}L${x + r * 0.28} ${y - r * 0.28}L${x + r} ${y}L${x + r * 0.28} ${y + r * 0.28}L${x} ${y + r}L${x - r * 0.28} ${y + r * 0.28}L${x - r} ${y}L${x - r * 0.28} ${y - r * 0.28}z`;
+        p.push(`<path d="${star(8, 8, 5)} ${star(57, 52, 4)} ${star(55, 6, 3)}" fill="#fff"/>`);
+      }
+    }
+    return `<svg class="ob-emblem${locked ? ' is-locked' : ''}" data-rank="${rank.id}" viewBox="0 0 64 64" aria-hidden="true">${p.join('')}</svg>`;
+  }
+
+  // Badges, checked against the counters. Earned ones stay earned (kept in localStorage) and get a toast once.
+  const OB_BADGES = [
+    {
+      id: 'true-larper',
+      name: 'True Larper',
+      need: '10 hours on one artist',
+      goal: 10 * 3600,
+      best: () => topStat('artist:'),
+      icon: '<path d="M5 5h14v6a7 7 0 0 1-14 0z"/><path d="M9 10h.01M15 10h.01"/><path d="M9.5 14a3.5 3.5 0 0 0 5 0"/>'
+    },
+    {
+      id: 'hyperfixated',
+      name: 'Hyperfixated',
+      need: '2 hours looping one song',
+      goal: 2 * 3600,
+      best: () => topStat('song:'),
+      icon: '<path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/><path d="M11 10h1v4"/>'
+    },
+    {
+      id: 'terminally-online',
+      name: 'Terminally Online',
+      need: '100 hours of listening',
+      goal: 100 * 3600,
+      best: () => statsCounters.get('total') || null,
+      icon: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a14 14 0 0 1 0 18 14 14 0 0 1 0-18"/>'
+    }
+  ];
+
+  function earnedBadges() {
+    try { return new Set(JSON.parse(localStorage.getItem('soulleak_badges') || '[]')); } catch (_) { return new Set(); }
+  }
+
+  function badgeMedal(b, earned) {
+    const lock = earned ? '' : '<span class="ob-medal-lock"><svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3" fill="none" stroke="currentColor" stroke-width="2.6"/></svg></span>';
+    return `<span class="ob-medal ${earned ? 'is-earned' : 'is-locked'}" data-badge="${b.id}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${b.icon}</svg>${lock}</span>`;
+  }
+
+  // Sidebar: earned badges as glowing medals, the rest as dark locked silhouettes (no names or progress).
+  function renderBadges(announce) {
+    const earned = earnedBadges();
+    let changed = false;
+    OB_BADGES.forEach((b) => {
+      const best = b.best();
+      if (best && best.seconds >= b.goal && !earned.has(b.id)) {
+        earned.add(b.id);
+        changed = true;
+        if (announce) showToast(`Badge unlocked: ${b.name}`, 'info');
+      }
+    });
+    if (changed) localStorage.setItem('soulleak_badges', JSON.stringify([...earned]));
+    const box = document.getElementById('ob-badges');
+    if (!box) return;
+    const html = OB_BADGES.map((b) => {
+      const done = earned.has(b.id);
+      const medal = badgeMedal(b, done);
+      return medal.replace('<span class="ob-medal', `<span title="${escapeHtml(done ? `${b.name}: ${b.need}` : 'Locked badge (see Settings > Badges)')}" class="ob-medal`);
+    }).join('');
+    if (box.innerHTML !== html) box.innerHTML = html;
+  }
+
+  function renderListenLevel() {
+    const total = statSeconds('total');
+    const i = rankIndexFor(total);
+    const cur = OB_RANKS[i];
+    const next = OB_RANKS[i + 1];
+    const emblemEl = document.getElementById('ob-level-emblem');
+    const nameEl = document.getElementById('ob-level-name');
+    const tierEl = document.getElementById('ob-level-tier');
+    const subEl = document.getElementById('ob-level-sub');
+    const fillEl = document.getElementById('ob-level-fill');
+    if (!nameEl) return;
+    if (emblemEl && emblemEl.dataset.rank !== String(i)) {
+      emblemEl.dataset.rank = String(i);
+      emblemEl.innerHTML = rankEmblemSvg(i, false);
+    }
+    nameEl.textContent = cur.title;
+    if (tierEl) {
+      tierEl.textContent = `Rank ${i + 1}`;
+      tierEl.style.setProperty('--accent', cur.accent);
+    }
+    if (next) {
+      const span = (next.at - cur.at) * 60;
+      const into = total - cur.at * 60;
+      subEl.textContent = `${fmtListen(span - into)} to ${next.title}`;
+      fillEl.style.transform = `scaleX(${Math.min(1, into / span)})`;
+    } else {
+      subEl.textContent = `Top rank · ${fmtHours(total)} listened`;
+      fillEl.style.transform = 'scaleX(1)';
+    }
+  }
+
+  function badgesPageOpen() {
+    const view = document.getElementById('view-settings');
+    return !!view && view.classList.contains('active') && !!document.querySelector('#view-settings .settings-section[data-cat="badges"]:not(.cat-hidden)');
+  }
+
+  // Settings > Badges: exact listening time, every rank and badge with what it takes and how far along you are.
+  function renderBadgesPage() {
+    const root = document.getElementById('ob-badges-page');
+    if (!root) return;
+    const total = statSeconds('total');
+    const ri = rankIndexFor(total);
+    const cur = OB_RANKS[ri];
+    const next = OB_RANKS[ri + 1];
+    const bar = (pct) => `<div class="ob-bp-bar"><i style="transform:scaleX(${Math.max(0, Math.min(1, pct)).toFixed(4)})"></i></div>`;
+
+    let nextHtml = '<div class="ob-bp-next">You reached the top rank.</div>';
+    if (next) {
+      const span = (next.at - cur.at) * 60;
+      const into = total - cur.at * 60;
+      nextHtml = `${bar(into / span)}<div class="ob-bp-next"><strong>${fmtListen(span - into)}</strong> to ${escapeHtml(next.title)} <span>(at ${fmtHours(next.at * 60)})</span></div>`;
+    }
+
+    const ranks = OB_RANKS.map((r, i) => {
+      const reached = i <= ri;
+      const isCur = i === ri;
+      let state = reached ? '<span class="ob-bp-state is-done">Reached</span>' : `<span class="ob-bp-state">${fmtListen(r.at * 60 - total)} to go</span>`;
+      if (isCur) state = '<span class="ob-bp-state is-current">Current</span>';
+      return `<div class="ob-bp-rank${reached ? ' is-reached' : ''}${isCur ? ' is-current' : ''}">
+        ${rankEmblemSvg(i, !reached)}
+        <div class="ob-bp-rank-text"><span class="ob-bp-rank-tier" style="--accent:${r.accent}">Rank ${i + 1}</span><span class="ob-bp-rank-title">${escapeHtml(r.title)}</span><span class="ob-bp-rank-need">${r.at ? `Needs ${fmtHours(r.at * 60)}` : 'Starting rank'}</span></div>
+        ${state}
+      </div>`;
+    }).join('');
+
+    const earned = earnedBadges();
+    const badges = OB_BADGES.map((b) => {
+      const best = b.best();
+      const have = best ? best.seconds : 0;
+      const done = earned.has(b.id);
+      const who = best && best.label && b.id !== 'terminally-online' ? ` on <strong>${escapeHtml(best.label)}</strong>` : '';
+      const status = done
+        ? '<span class="ob-bp-state is-done">Unlocked</span>'
+        : `<span class="ob-bp-state">${fmtListen(b.goal - have)} to go</span>`;
+      return `<div class="ob-bp-badge${done ? ' is-earned' : ''}">
+        ${badgeMedal(b, done)}
+        <div class="ob-bp-badge-body">
+          <div class="ob-bp-badge-head"><span class="ob-bp-badge-name">${escapeHtml(b.name)}</span>${status}</div>
+          <div class="ob-bp-badge-need">${escapeHtml(b.need)} · needs ${fmtHours(b.goal)}</div>
+          ${bar(have / b.goal)}
+          <div class="ob-bp-badge-have">${have ? `Your best: ${fmtListen(have)}${who}` : 'Nothing counted yet'}</div>
+        </div>
+      </div>`;
+    }).join('');
+
+    root.innerHTML = `
+      <div class="ob-bp-hero">
+        <div class="ob-bp-hero-emblem">${rankEmblemSvg(ri, false)}</div>
+        <div class="ob-bp-hero-body">
+          <div class="ob-bp-kicker" style="--accent:${cur.accent}">Rank ${ri + 1} of ${OB_RANKS.length}</div>
+          <div class="ob-bp-title">${escapeHtml(cur.title)}</div>
+          <div class="ob-bp-hours"><strong>${fmtListen(total)}</strong> listened <span>(${(total / 3600).toFixed(2)} h)</span></div>
+          ${nextHtml}
+        </div>
+      </div>
+      <div class="ob-bp-heading">Badges</div>
+      <div class="ob-bp-badges">${badges}</div>
+      <div class="ob-bp-heading">Ranks</div>
+      <div class="ob-bp-ranks">${ranks}</div>`;
+  }
+
+  const obLevelBox = document.getElementById('ob-level');
+  if (obLevelBox) {
+    const openBadges = () => {
+      switchView('settings');
+      showSettingsCategory('badges');
+    };
+    obLevelBox.addEventListener('click', openBadges);
+    obLevelBox.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openBadges(); }
+    });
+  }
+
+  renderListenLevel();
+  loadStats();
+  setInterval(() => {
+    const audio = el.nativeAudio;
+    const t = state.currentTrack;
+    if (!state.isPlaying || !audio || audio.paused || !t) return;
+    bumpStat('total', 1, 'All listening');
+    const artist = primaryArtist(t);
+    if (artist) bumpStat(`artist:${artist.toLowerCase()}`, 1, artist);
+    bumpStat(`song:${getTrackCanonicalId(t)}`, 1, `${t.title || 'Untitled'}${artist ? ` by ${artist}` : ''}`);
+    statsTicks += 1;
+    if (statsTicks % 10 === 0) renderListenLevel();
+    if (statsTicks % 5 === 0 && badgesPageOpen()) renderBadgesPage();
+    if (statsTicks % 15 === 0) {
+      flushStats();
+      renderBadges(true);
+    }
+  }, 1000);
+  window.addEventListener('beforeunload', flushStats);
+
+  // Stall detector: a song that doesn't start, or stops moving, for 10 s gets a skip / retry prompt.
+  const STALL_MS = 10000;
+  let stallWatch = { token: -1, since: Date.now(), lastTime: -1, shown: false };
+  let stallDialog = null;
+
+  function closeStallPrompt() {
+    if (!stallDialog) return;
+    stallDialog.remove();
+    stallDialog = null;
+  }
+
+  function openStallPrompt(track) {
+    closeStallPrompt();
+    const dlg = document.createElement('div');
+    dlg.className = 'ob-stall';
+    dlg.setAttribute('role', 'alertdialog');
+    dlg.setAttribute('aria-labelledby', 'ob-stall-title');
+    dlg.innerHTML = `
+      <div class="ob-stall-card">
+        <div class="ob-stall-ring" aria-hidden="true"></div>
+        <h3 id="ob-stall-title">This song is stuck</h3>
+        <p><strong>${escapeHtml(track.title || 'This track')}</strong> hasn't played anything for 10 seconds.</p>
+        <div class="ob-stall-actions">
+          <button type="button" class="ob-stall-primary" data-act="skip">Skip track</button>
+          <button type="button" data-act="retry">Try again</button>
+          <button type="button" data-act="reload">Reload player</button>
+        </div>
+        <button type="button" class="ob-stall-wait" data-act="wait">Keep waiting</button>
+      </div>`;
+    dlg.addEventListener('click', (e) => {
+      const act = e.target.closest('[data-act]')?.dataset.act;
+      if (!act) return;
+      closeStallPrompt();
+      if (act === 'skip') {
+        playNext();
+      } else if (act === 'retry') {
+        playTrack(track, state.queue && state.queue.length ? state.queue : null, state.currentTrackIndexInContext, state.currentTrackContext);
+      } else if (act === 'reload') {
+        flushStats();
+        location.reload();
+      } else {
+        // Ask again if it's still stuck another 10 s from now.
+        stallWatch.shown = false;
+        stallWatch.since = Date.now();
+      }
+    });
+    document.body.appendChild(dlg);
+    stallDialog = dlg;
+    dlg.querySelector('[data-act="skip"]').focus();
+  }
+
+  setInterval(() => {
+    const audio = el.nativeAudio;
+    const t = state.currentTrack;
+    if (!audio || !t) return;
+    if (state.loadToken !== stallWatch.token) {
+      stallWatch = { token: state.loadToken, since: Date.now(), lastTime: audio.currentTime, shown: false };
+      closeStallPrompt();
+      return;
+    }
+    const loading = !!el.trackLoadingOverlay && !el.trackLoadingOverlay.classList.contains('hidden');
+    const wantsSound = loading || state.isPlaying;
+    const moving = !audio.paused && audio.readyState >= 3 && audio.currentTime !== stallWatch.lastTime;
+    stallWatch.lastTime = audio.currentTime;
+    if (!wantsSound || moving) {
+      stallWatch.since = Date.now();
+      if (moving) closeStallPrompt();
+      return;
+    }
+    if (!stallWatch.shown && Date.now() - stallWatch.since >= STALL_MS) {
+      stallWatch.shown = true;
+      openStallPrompt(t);
+    }
+  }, 1000);
+
+  // Graceful exit, osu!-style. The main process holds the close for `ms`; in that time the song winds down like a
+  // record stopping (playback rate and pitch sink together) while the volume fades, the UI goes to black, and
+  // then the logo comes in.
+  function windDownAudio(ms) {
+    const audio = el.nativeAudio;
+    if (!audio || audio.paused) return;
+    const span = Math.max(300, ms - 150);
+    const startRate = audio.playbackRate || 1;
+    // Pitch must follow the speed, or it just sounds slower instead of like a stopping record.
+    audio.preservesPitch = false;
+    audio.webkitPreservesPitch = false;
+    const gain = audioEngine && audioEngine.ctx && audioEngine.masterGain ? audioEngine.masterGain.gain : null;
+    const startVol = audio.volume;
+    if (gain) {
+      const now = audioEngine.ctx.currentTime;
+      const from = Math.max(0.0001, gain.value);
+      const curve = new Float32Array(64).map((_, i) => from * Math.pow(1 - i / 63, 1.6));
+      gain.cancelScheduledValues(now);
+      gain.setValueCurveAtTime(curve, now, span / 1000);
+    }
+    const t0 = performance.now();
+    // A timer rather than requestAnimationFrame, so the wind-down still runs if the window is hidden.
+    const timer = setInterval(() => {
+      const k = Math.min(1, (performance.now() - t0) / span);
+      audio.playbackRate = Math.max(0.07, startRate * Math.pow(1 - k, 1.25));
+      if (!gain) audio.volume = startVol * Math.pow(1 - k, 1.6);
+      if (k >= 1) {
+        clearInterval(timer);
+        audio.pause();
+      }
+    }, 16);
+  }
+
+  if (window.electronAPI && window.electronAPI.onAppExiting) {
+    window.electronAPI.onAppExiting((ms) => {
+      const total = Number(ms) || 2000;
+      if (document.querySelector('.ob-exit')) return;
+      flushStats();
+      closeStallPrompt();
+      windDownAudio(total);
+      const veil = document.createElement('div');
+      veil.className = 'ob-exit';
+      veil.style.setProperty('--exit-ms', `${total}ms`);
+      veil.innerHTML = '<div class="ob-exit-mark"><img class="ob-exit-logo" src="../../assets/soulleak-lilac.svg" alt="" draggable="false"><span class="ob-exit-word">Soulleak</span></div>';
+      document.body.appendChild(veil);
+    });
+  }
+
+  // Small tags under the song title that say which effects are shaping the sound right now.
+  function fxTagList() {
+    const s = state.audioSettings || {};
+    const tags = [];
+    const rate = s.speedPitch || 1;
+    if (rate < 0.97) tags.push('Slowed');
+    else if (rate > 1.03) tags.push('Nightcore');
+    if ((s.speed || 1) !== 1) tags.push(`${(s.speed || 1).toFixed(2)}x`);
+    if (s.pitch) tags.push(`${s.pitch > 0 ? '+' : ''}${s.pitch} st`);
+    if ((s.reverb || 0) > 0) tags.push('Reverb');
+    if ((s.echo || 0) > 0) tags.push('Echo');
+    if ((s.distortion || 0) > 0) tags.push('Drive');
+    if ((s.spatial8d || 0) > 0) tags.push('8D');
+    if ((s.eqBands || []).some((v) => v)) tags.push('EQ');
+    return tags;
+  }
+
+  // What Discord shows: the preset's name when one is active, otherwise the individual effects.
+  function currentEffectsLabel() {
+    const tags = fxTagList();
+    if (!tags.length) return '';
+    const preset = state.activePresetId && state.activePresetId !== 'p_default'
+      ? getAllPresets().find((p) => p.id === state.activePresetId)
+      : null;
+    return preset ? preset.name : tags.join(' · ');
+  }
+
+  function updateFxTags() {
+    const box = document.getElementById('playbar-fx-tags');
+    if (!box) return;
+    const tags = fxTagList();
+    const html = tags.map((t) => `<span class="ob-fx-tag">${escapeHtml(t)}</span>`).join('');
+    if (box.innerHTML === html) return;
+    box.innerHTML = html;
+    document.body.classList.toggle('ob-has-fx', tags.length > 0);
+    // Effects changed mid-song: refresh Discord once the change settles (presets tween for a moment).
+    clearTimeout(updateFxTags.rpcTimer);
+    updateFxTags.rpcTimer = setTimeout(() => {
+      if (state.isPlaying && state.currentTrack) sendDiscordRpcUpdate(state.currentTrack, true);
+    }, 1200);
+  }
+
+  // Per-row effect menu: pick a preset and the row's song plays with it.
+  const ROW_FX_PRESETS = [
+    { id: 'p_default', label: 'Original' },
+    { id: 'p_slowed', label: 'Slowed + Reverb' },
+    { id: 'p_nightcore', label: 'Nightcore' },
+    { id: 'p_8d', label: '8D Audio' }
+  ];
+  let rowFxMenu = null;
+
+  function closeRowFxMenu() {
+    if (!rowFxMenu) return;
+    rowFxMenu.remove();
+    rowFxMenu = null;
+    document.removeEventListener('pointerdown', onRowFxOutside, true);
+  }
+
+  function onRowFxOutside(e) {
+    if (rowFxMenu && !rowFxMenu.contains(e.target) && !e.target.closest('.btn-row-fx')) closeRowFxMenu();
+  }
+
+  function openRowFxMenu(anchor, row) {
+    const wasOpenHere = rowFxMenu && rowFxMenu._anchor === anchor;
+    closeRowFxMenu();
+    if (wasOpenHere || !anchor.isConnected || !anchor.getClientRects().length) return;
+    const menu = document.createElement('div');
+    menu.className = 'ob-fx-menu';
+    menu._anchor = anchor;
+    menu.innerHTML = ROW_FX_PRESETS.map((p) =>
+      `<button type="button" data-preset="${p.id}" class="${state.activePresetId === p.id ? 'is-active' : ''}">${escapeHtml(p.label)}</button>`
+    ).join('');
+    menu.addEventListener('click', (e) => {
+      const btn = e.target.closest('button[data-preset]');
+      if (!btn) return;
+      const preset = getAllPresets().find((p) => p.id === btn.dataset.preset);
+      closeRowFxMenu();
+      if (!preset) return;
+      applyPreset(preset);
+      if (!row.classList.contains('playing')) row.click();
+    });
+    document.body.appendChild(menu);
+    const r = anchor.getBoundingClientRect();
+    const mw = menu.offsetWidth;
+    const mh = menu.offsetHeight;
+    const top = r.bottom + 6 + mh > window.innerHeight ? r.top - mh - 6 : r.bottom + 6;
+    menu.style.left = `${Math.max(8, Math.min(window.innerWidth - mw - 8, r.right - mw))}px`;
+    menu.style.top = `${Math.max(8, top)}px`;
+    rowFxMenu = menu;
+    document.addEventListener('pointerdown', onRowFxOutside, true);
+  }
+
+  window.addEventListener('scroll', closeRowFxMenu, true);
+  window.addEventListener('resize', closeRowFxMenu);
+  window.addEventListener('blur', closeRowFxMenu);
+  document.getElementById('search-input')?.addEventListener('input', closeRowFxMenu);
+  window.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeRowFxMenu(); });
+
+  const obVisualizerBtn = document.getElementById('btn-ob-visualizer');
+  if (obVisualizerBtn) obVisualizerBtn.addEventListener('click', () => openSoulFullscreen());
+
+  const obMiniBtn = document.getElementById('btn-ob-miniplayer');
+  if (obMiniBtn && window.electronAPI && window.electronAPI.overlayToggle) {
+    obMiniBtn.addEventListener('click', () => window.electronAPI.overlayToggle());
+    window.electronAPI.onOverlayVisibility((visible) => {
+      obMiniBtn.classList.toggle('active', !!visible);
+      obMiniBtn.setAttribute('aria-pressed', visible ? 'true' : 'false');
+    });
+  } else if (obMiniBtn) {
+    obMiniBtn.hidden = true;
+  }
+
+  updateFxTags();
+
   function applyWelcomeResult(d) {
     if (!d) return;
     function setSwitch(btn, on) { if (btn && btn.classList.contains('active') !== !!on) btn.click(); }
@@ -18498,7 +19165,7 @@ function bindCoverHoldZoom(wrapEl) {
   const sliderCrossfade = document.getElementById('slider-crossfade');
   const valCrossfade = document.getElementById('val-crossfade');
   if (sliderCrossfade) {
-    const cf = parseInt(localStorage.getItem('riff_crossfade') || '0', 10);
+    const cf = getCrossfadeSeconds();
     sliderCrossfade.value = cf;
     if (valCrossfade) valCrossfade.textContent = cf > 0 ? `${cf}s` : 'Off';
     sliderCrossfade.addEventListener('input', (e) => {
@@ -19535,7 +20202,7 @@ function bindCoverHoldZoom(wrapEl) {
     } else if (action === 'lyrics') {
       if (el.btnToggleLyricsPanel) el.btnToggleLyricsPanel.click();
     } else if (action === 'karaoke') {
-      if (typeof openTvKaraoke === 'function') openTvKaraoke();
+      openSoulFullscreen();
     } else if (action === 'miniPlayer') {
       if (typeof toggleMiniWindow === 'function') toggleMiniWindow();
     } else if (action === 'search' && el.searchInput) {
@@ -20514,7 +21181,15 @@ function bindCoverHoldZoom(wrapEl) {
   function fsSyncTrack() {
     const t = state.currentTrack;
     soulFs.track = t;
-    const art = (document.getElementById('playbar-artwork') || {}).src || (t ? getTrackThumbUrl(t) : '');
+    const fallback = t ? getTrackThumbUrl(t) : '';
+    const art = (document.getElementById('playbar-artwork') || {}).src || fallback;
+    // A dead cover link falls back to the track thumbnail, then to a plain tile.
+    soulFs.art.onerror = () => {
+      if (fallback && soulFs.art.src !== fallback) soulFs.art.src = fallback;
+      else soulFs.root.classList.add('no-art');
+    };
+    soulFs.art.onload = () => soulFs.root.classList.remove('no-art');
+    soulFs.root.classList.toggle('no-art', !art);
     if (art) {
       soulFs.art.src = art;
       soulFs.bg.style.backgroundImage = `url("${art.replace(/"/g, '%22')}")`;
@@ -20674,7 +21349,11 @@ function bindCoverHoldZoom(wrapEl) {
     const gap = 3;
     const barW = (w - gap * (n - 1)) / n;
     const mid = h / 2;
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+    const grad = ctx.createLinearGradient(0, 0, w, 0);
+    grad.addColorStop(0, '#c4b5fd');
+    grad.addColorStop(0.5, '#8b5cf6');
+    grad.addColorStop(1, '#6366f1');
+    ctx.fillStyle = grad;
     for (let i = 0; i < n; i++) {
       const v = Math.max(0.04, soulFs.bars[i]);
       const bh = Math.max(2, v * (h - 4));
@@ -27379,6 +28058,13 @@ function bindCoverHoldZoom(wrapEl) {
         divider.parentNode.insertBefore(btn, divider);
       }
     });
+    // The Obsidian search row and mood input aren't views, so they ride along under Home and Soul Search.
+    const home = nav.querySelector('.nav-item[data-view="discover"]');
+    const searchRow = nav.querySelector('#nav-ob-search');
+    if (home && searchRow) home.after(searchRow);
+    const soul = nav.querySelector('.nav-item[data-view="soul"]');
+    const mood = nav.querySelector('#ob-mood-form');
+    if (soul && mood) soul.after(mood);
     if (typeof updateNavIndicator === 'function') {
       requestAnimationFrame(() => updateNavIndicator(false));
     }

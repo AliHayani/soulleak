@@ -240,7 +240,12 @@
           this.masterGain.connect(this.normGain);
           this.normGain.connect(this.normLimiter);
           this.normLimiter.connect(this.analyserNode);
-          this.analyserNode.connect(this.fadeGain);
+          // 8D sits between the analyser and the fade stage: a dry path plus an orbiting HRTF panner,
+          // mixed by audioSettings.spatial8d (0 = off, 1 = full orbit).
+          this.spatialDry = this.ctx.createGain();
+          this.spatialDry.gain.value = 1.0;
+          this.analyserNode.connect(this.spatialDry);
+          this.spatialDry.connect(this.fadeGain);
           this.fadeGain.connect(this.ctx.destination);
           this.eqHigh.connect(this.levelAnalyser);
 
@@ -506,7 +511,55 @@
       }
 
       if (this.graphInitialized) this._updateRouting();
+      this._applySpatial(s.spatial8d || 0);
       this._applyMasterVolume();
+    }
+
+    // Builds the 8D path on first use: the sound circles the listener once every ~10 s.
+    _ensureSpatialPath() {
+      if (this.spatialWet || !this.ctx || !this.analyserNode || !this.fadeGain) return !!this.spatialWet;
+      const ctx = this.ctx;
+      const panner = ctx.createPanner();
+      panner.panningModel = 'HRTF';
+      panner.distanceModel = 'inverse';
+      panner.refDistance = 1;
+      panner.positionY.value = 0;
+
+      // Two LFOs a quarter turn apart (sine on X, cosine on Z) trace a circle around the head.
+      const radius = 2.2;
+      const lfoX = ctx.createOscillator();
+      const lfoZ = ctx.createOscillator();
+      lfoX.frequency.value = 0.1;
+      lfoZ.frequency.value = 0.1;
+      lfoZ.setPeriodicWave(ctx.createPeriodicWave(new Float32Array([0, 1]), new Float32Array([0, 0])));
+      const depthX = ctx.createGain();
+      const depthZ = ctx.createGain();
+      depthX.gain.value = radius;
+      depthZ.gain.value = radius;
+      panner.positionX.value = 0;
+      panner.positionZ.value = 0;
+      lfoX.connect(depthX).connect(panner.positionX);
+      lfoZ.connect(depthZ).connect(panner.positionZ);
+      lfoX.start();
+      lfoZ.start();
+
+      this.spatialWet = ctx.createGain();
+      this.spatialWet.gain.value = 0;
+      this.analyserNode.connect(panner);
+      panner.connect(this.spatialWet);
+      this.spatialWet.connect(this.fadeGain);
+      this.spatialPanner = panner;
+      return true;
+    }
+
+    _applySpatial(amount) {
+      const a = Math.max(0, Math.min(1, Number(amount) || 0));
+      if (a > 0) this._ensureSpatialPath();
+      if (!this.spatialDry || !this.ctx) return;
+      const now = this.ctx.currentTime;
+      this.spatialDry.gain.setTargetAtTime(1 - a, now, 0.05);
+      // HRTF loses some level at distance; a little make-up keeps 8D as loud as the dry signal.
+      if (this.spatialWet) this.spatialWet.gain.setTargetAtTime(a * 1.6, now, 0.05);
     }
 
     _applyMasterVolume() {
@@ -537,7 +590,7 @@
       const eqMod = s.eq ? (s.eq.low !== 0 || s.eq.mid !== 0 || s.eq.high !== 0) : false;
       const eqBandsMod = Array.isArray(s.eqBands) ? s.eqBands.some(v => v !== 0) : false;
       return s.speed !== 1.0 || s.speedPitch !== 1.0 || s.pitch !== 0 ||
-        s.reverb !== 0 || s.distortion !== 0 || s.volume !== 1.0 || s.echo !== 0 || eqMod || eqBandsMod;
+        s.reverb !== 0 || s.distortion !== 0 || s.volume !== 1.0 || s.echo !== 0 || (s.spatial8d || 0) > 0 || eqMod || eqBandsMod;
     }
 
 
@@ -721,7 +774,7 @@
         sat.connect(limiter);
         limiter.connect(eqL);
         offlineEqTail.connect(master);
-        master.connect(offline.destination);
+        this._connectOfflineOutput(offline, master, s);
 
       } else {
         const dry = offline.createGain();
@@ -773,11 +826,48 @@
         conv.connect(revGain);
         revGain.connect(master);
 
-        master.connect(offline.destination);
+        this._connectOfflineOutput(offline, master, s);
       }
 
       src.start(0);
       return offline.startRendering();
+    }
+
+    // Same 8D orbit as live playback, so a downloaded "8D Audio" version sounds like what you heard.
+    _connectOfflineOutput(offline, master, s) {
+      const a = Math.max(0, Math.min(1, Number(s && s.spatial8d) || 0));
+      if (a <= 0) {
+        master.connect(offline.destination);
+        return;
+      }
+      const dry = offline.createGain();
+      dry.gain.value = 1 - a;
+      master.connect(dry).connect(offline.destination);
+
+      const panner = offline.createPanner();
+      panner.panningModel = 'HRTF';
+      panner.distanceModel = 'inverse';
+      panner.refDistance = 1;
+      const lfoX = offline.createOscillator();
+      const lfoZ = offline.createOscillator();
+      lfoX.frequency.value = 0.1;
+      lfoZ.frequency.value = 0.1;
+      lfoZ.setPeriodicWave(offline.createPeriodicWave(new Float32Array([0, 1]), new Float32Array([0, 0])));
+      const depthX = offline.createGain();
+      const depthZ = offline.createGain();
+      depthX.gain.value = 2.2;
+      depthZ.gain.value = 2.2;
+      panner.positionX.value = 0;
+      panner.positionZ.value = 0;
+      lfoX.connect(depthX).connect(panner.positionX);
+      lfoZ.connect(depthZ).connect(panner.positionZ);
+      lfoX.start(0);
+      lfoZ.start(0);
+
+      const wet = offline.createGain();
+      wet.gain.value = a * 1.6;
+      master.connect(panner);
+      panner.connect(wet).connect(offline.destination);
     }
 
     audioBufferToWav(buffer) {

@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Soulleak mini-player</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: transparent;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      user-select: none;
+    }
+
+    /* A compact obsidian pill: grip, previous / play / next, volume. */
+    .pill {
+      position: absolute;
+      inset: 6px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 0 12px 0 6px;
+      border-radius: 18px;
+      background: rgba(10, 9, 14, 0.88);
+      border: 1px solid rgba(139, 92, 246, 0.35);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+      backdrop-filter: blur(14px);
+      color: #fff;
+      transition: border-color 0.2s ease;
+    }
+
+    .pill:hover { border-color: rgba(139, 92, 246, 0.7); }
+
+    /* Drag handle; dropping the window snaps it to the nearest screen corner. */
+    .grip {
+      display: grid;
+      place-items: center;
+      width: 18px;
+      height: 44px;
+      border-radius: 8px;
+      color: rgba(255, 255, 255, 0.3);
+      cursor: grab;
+    }
+
+    .grip svg { width: 10px; height: 18px; fill: currentColor; }
+
+    button {
+      -webkit-app-region: no-drag;
+      display: grid;
+      place-items: center;
+      width: 36px;
+      height: 36px;
+      border: 0;
+      border-radius: 50%;
+      background: transparent;
+      color: rgba(255, 255, 255, 0.85);
+      cursor: pointer;
+      transition: background-color 0.15s ease, transform 0.2s ease;
+    }
+
+    button:hover { background: rgba(255, 255, 255, 0.1); color: #fff; }
+    button:active { transform: scale(0.9); }
+    button svg { width: 18px; height: 18px; fill: currentColor; }
+
+    .play {
+      width: 42px;
+      height: 42px;
+      background: linear-gradient(135deg, #8b5cf6, #6366f1);
+      color: #fff;
+    }
+
+    .play:hover { background: linear-gradient(135deg, #9d74f8, #7c7ff3); }
+    .play svg { width: 20px; height: 20px; }
+    .play .i-pause { display: none; }
+    body.playing .play .i-pause { display: block; }
+    body.playing .play .i-play { display: none; }
+
+    .vol {
+      -webkit-app-region: no-drag;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-left: 4px;
+      color: rgba(255, 255, 255, 0.6);
+    }
+
+    .vol svg { width: 16px; height: 16px; fill: currentColor; flex-shrink: 0; }
+
+    input[type="range"] {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 92px;
+      height: 4px;
+      border-radius: 2px;
+      background: linear-gradient(90deg, #8b5cf6 var(--v, 50%), rgba(255, 255, 255, 0.18) var(--v, 50%));
+      outline: none;
+      cursor: pointer;
+    }
+
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: #fff;
+      box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.35);
+    }
+
+    /* Thin progress line along the bottom edge. */
+    .progress {
+      position: absolute;
+      left: 18px;
+      right: 18px;
+      bottom: 4px;
+      height: 2px;
+      border-radius: 1px;
+      background: rgba(255, 255, 255, 0.08);
+      overflow: hidden;
+    }
+
+    .progress i {
+      display: block;
+      height: 100%;
+      width: 100%;
+      background: #8b5cf6;
+      transform-origin: left center;
+      transform: scaleX(0);
+    }
+  </style>
+</head>
+<body>
+  <div class="pill" id="pill">
+    <div class="grip" title="Drag; it snaps to the nearest corner">
+      <svg viewBox="0 0 10 18"><circle cx="2" cy="3" r="1.5"/><circle cx="8" cy="3" r="1.5"/><circle cx="2" cy="9" r="1.5"/><circle cx="8" cy="9" r="1.5"/><circle cx="2" cy="15" r="1.5"/><circle cx="8" cy="15" r="1.5"/></svg>
+    </div>
+    <button type="button" data-cmd="prev" title="Previous">
+      <svg viewBox="0 0 24 24"><path d="M6 5h2v14H6zM20 6.2v11.6a1 1 0 0 1-1.55.83L10 13a1.2 1.2 0 0 1 0-2l8.45-5.63A1 1 0 0 1 20 6.2Z"/></svg>
+    </button>
+    <button type="button" class="play" data-cmd="play-pause" title="Play / pause">
+      <svg class="i-play" viewBox="0 0 24 24"><path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.4-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5Z"/></svg>
+      <svg class="i-pause" viewBox="0 0 24 24"><path d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z"/></svg>
+    </button>
+    <button type="button" data-cmd="next" title="Skip">
+      <svg viewBox="0 0 24 24"><path d="M16 5h2v14h-2zM4 6.2v11.6a1 1 0 0 0 1.55.83L14 13a1.2 1.2 0 0 0 0-2L5.55 5.37A1 1 0 0 0 4 6.2Z"/></svg>
+    </button>
+    <div class="vol">
+      <svg viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0 0 14 7.97v8.05A4.47 4.47 0 0 0 16.5 12z"/></svg>
+      <input type="range" id="vol" min="0" max="100" value="50" aria-label="Volume">
+    </div>
+    <div class="progress"><i id="progress"></i></div>
+  </div>
+
+  <script>
+    const api = window.soulOverlay;
+    const vol = document.getElementById('vol');
+    const progress = document.getElementById('progress');
+    const pill = document.getElementById('pill');
+    let dragging = false;
+
+    function paintVolume() {
+      vol.style.setProperty('--v', `${vol.value}%`);
+    }
+
+    // Hold the grip to move the player; on release it snaps to the nearest screen corner.
+    const grip = document.querySelector('.grip');
+    grip.addEventListener('pointerdown', (e) => {
+      grip.setPointerCapture(e.pointerId);
+      grip.style.cursor = 'grabbing';
+      if (api) api.dragStart();
+    });
+    const endDrag = () => {
+      grip.style.cursor = '';
+      if (api) api.dragEnd();
+    };
+    grip.addEventListener('pointerup', endDrag);
+    grip.addEventListener('lostpointercapture', endDrag);
+
+    document.querySelectorAll('[data-cmd]').forEach((btn) => {
+      btn.addEventListener('click', () => api && api.command(btn.dataset.cmd));
+    });
+
+    vol.addEventListener('pointerdown', () => { dragging = true; });
+    window.addEventListener('pointerup', () => { dragging = false; });
+    vol.addEventListener('input', () => {
+      paintVolume();
+      if (api) api.command('set-volume', Number(vol.value) / 100);
+    });
+
+    // Scrolling over the pill also changes the volume.
+    pill.addEventListener('wheel', (e) => {
+      vol.value = Math.max(0, Math.min(100, Number(vol.value) + (e.deltaY < 0 ? 5 : -5)));
+      paintVolume();
+      if (api) api.command('set-volume', Number(vol.value) / 100);
+    }, { passive: true });
+
+    if (api) {
+      api.onState((s) => {
+        if (!s) return;
+        document.body.classList.toggle('playing', !!s.playing);
+        pill.title = s.title ? `${s.title}${s.artist ? ' · ' + s.artist : ''}` : '';
+        if (!dragging && Number.isFinite(s.volume)) {
+          vol.value = Math.round(s.volume * 100);
+          paintVolume();
+        }
+        progress.style.transform = `scaleX(${s.duration ? Math.min(1, s.position / s.duration) : 0})`;
+      });
+    }
+    paintVolume();
+  </script>
+</body>
+</html>

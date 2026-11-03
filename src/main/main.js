@@ -50,6 +50,7 @@ function decryptAccount(buffer) {
 }
 const { LIBRARY_DIR, DATA_DIR, resolveBinary, tutorialDone, markTutorialDone, readStartupConfig, writeStartupConfig, cookieJarHasYtLogin } = require('../shared/platform');
 const { getLauncherInfo, installLauncher } = require('./launcher');
+const { createOverlay } = require('./overlay');
 const { getSystemAudioOutputInfo } = require('../shared/audio-output');
 const { log, tail, LOG_DIR } = require('../shared/logger');
 const logger = { log, tail, LOG_DIR, error: (msg, err) => log('ERROR', `${msg}: ${err && err.message ? err.message : err}`) };
@@ -167,7 +168,11 @@ function runGUI() {
   let serverPort = PORT;
   let tray = null;
   let isQuitting = false;
-  let trayOnClose = process.platform !== 'linux';
+  // Soulleak closes on X by default (with the graceful fade); "minimize to tray on close" is opt-in.
+  let trayOnClose = false;
+  const EXIT_FADE_MS = 2000;
+  let exitFadeDone = false;
+  let exitFadeTimer = null;
   let isMiniWindow = false;
   let preMiniBounds = null;
 
@@ -484,7 +489,17 @@ function runGUI() {
       if (trayOnClose && tray && !isQuitting) {
         e.preventDefault();
         mainWindow.hide();
+        return;
       }
+      // Graceful exit: hold the close for a 2 s audio fade and logo animation, then quit for real.
+      if (exitFadeDone) return;
+      e.preventDefault();
+      if (exitFadeTimer) return;
+      try { mainWindow.webContents.send('app-exiting', EXIT_FADE_MS); } catch (_) {}
+      exitFadeTimer = setTimeout(() => {
+        exitFadeDone = true;
+        app.quit();
+      }, EXIT_FADE_MS + 150);
     });
 
     discordRPC.initRPC();
@@ -2337,6 +2352,8 @@ function runGUI() {
           );
         } catch (_) {}
         createWindow();
+        // Gaming mini-player: hidden until Ctrl+Alt+I (or the playbar button) shows it.
+        createOverlay(() => mainWindow);
         const GLOBAL_SHORTCUTS = {
           'CommandOrControl+Shift+Space': 'play-pause',
           'CommandOrControl+Alt+Shift+Right': 'next',
