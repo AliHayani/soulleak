@@ -39,6 +39,8 @@
     },
     "files": [
       "src/**/*",
+      "!src/storage.json",
+      "!src/storage.json.tmp",
       "assets/**/*",
       "vendor/**/*",
       "package.json",
