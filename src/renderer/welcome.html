@@ -1600,7 +1600,7 @@
                   <div class="opt-title" data-i18n>Discord status</div>
                   <div class="opt-sub" id="discordSub" data-i18n>Let friends see what's playing on your profile</div>
                 </div>
-                <button class="sw" type="button" role="switch" aria-checked="false" id="discordSwitch"></button>
+                <button class="sw on" type="button" role="switch" aria-checked="true" id="discordSwitch"></button>
               </div>
             </div>
 
@@ -2178,7 +2178,8 @@
     const discordSwitch = document.getElementById('discordSwitch');
     const discordSub = document.getElementById('discordSub');
     const DISCORD_HINT = discordSub.textContent;
-    let discordOn = false;
+    // On by default: Soulleak shows what you're playing on Discord unless you switch it off here.
+    let discordOn = true;
 
     async function refreshDiscord() {
       if (!discordOn) {
@@ -2197,6 +2198,8 @@
       refreshDiscord();
       if (discordOn) setTimeout(refreshDiscord, 1800);
     });
+    refreshDiscord();
+    setTimeout(refreshDiscord, 1800);
 
 
     const launcherSwitch = document.getElementById('launcherSwitch');
