@@ -24,7 +24,7 @@
       gap: 6px;
       padding: 0 12px 0 6px;
       border-radius: 18px;
-      background: rgba(10, 9, 14, 0.9);
+      background: #0b0a10;
       border: 1px solid rgba(139, 92, 246, 0.35);
       box-shadow: 0 10px 30px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.05);
       backdrop-filter: blur(14px);
@@ -154,26 +154,82 @@
       box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.35);
     }
 
-    /* Thin progress line along the bottom edge. */
-    .progress {
-      position: absolute !important;
-      left: 18px;
-      right: 18px;
-      bottom: 4px;
-      height: 2px;
-      border-radius: 1px;
-      background: rgba(255, 255, 255, 0.08);
-      overflow: hidden;
+    /* Repeat this song: glows when on. */
+    .repeat { width: 30px; height: 30px; color: rgba(255, 255, 255, 0.55); }
+    .repeat svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+    body.repeat-on .repeat {
+      color: #fff;
+      background: rgba(139, 92, 246, 0.28);
+      box-shadow: inset 0 0 0 1px rgba(139, 92, 246, 0.8), 0 0 12px rgba(139, 92, 246, 0.6);
     }
 
-    .progress i {
-      display: block;
-      height: 100%;
-      width: 100%;
-      background: #8b5cf6;
+    /* Seek bar along the bottom edge: a thin line that thickens on hover; click or drag to jump. */
+    .seek {
+      position: absolute !important;
+      left: 14px;
+      right: 14px;
+      bottom: 0;
+      height: 12px;
+      cursor: pointer;
+    }
+
+    .seek-rail {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 4px;
+      height: 3px;
+      border-radius: 2px;
+      background: rgba(255, 255, 255, 0.1);
+      overflow: hidden;
+      transition: height 0.15s ease;
+    }
+
+    .seek-rail i {
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(90deg, #a78bfa, #8b5cf6, #6366f1);
       transform-origin: left center;
       transform: scaleX(0);
     }
+
+    .seek-knob {
+      position: absolute;
+      bottom: 1.5px;
+      left: 0;
+      width: 10px;
+      height: 10px;
+      margin-left: -5px;
+      border-radius: 50%;
+      background: #fff;
+      box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.4), 0 0 10px rgba(139, 92, 246, 0.9);
+      transform: scale(0);
+      transition: transform 0.15s ease;
+    }
+
+    .seek:hover .seek-rail, body.seeking .seek-rail { height: 5px; }
+    .seek:hover .seek-knob, body.seeking .seek-knob { transform: scale(1); }
+
+    /* Time readout: shows the hovered or dragged position. */
+    .seek-time {
+      position: absolute;
+      bottom: 13px;
+      left: 0;
+      padding: 1px 6px;
+      border-radius: 5px;
+      background: rgba(10, 9, 15, 0.95);
+      border: 1px solid rgba(139, 92, 246, 0.45);
+      font-size: 10px;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+      transform: translateX(-50%);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.12s ease;
+    }
+
+    .seek:hover .seek-time, body.seeking .seek-time { opacity: 1; }
   </style>
 </head>
 <body>
@@ -197,17 +253,28 @@
     <button type="button" data-cmd="next" title="Skip">
       <svg viewBox="0 0 24 24"><path d="M16 5h2v14h-2zM4 6.2v11.6a1 1 0 0 0 1.55.83L14 13a1.2 1.2 0 0 0 0-2L5.55 5.37A1 1 0 0 0 4 6.2Z"/></svg>
     </button>
+    <button type="button" class="repeat" data-cmd="toggle-repeat" title="Repeat this song" aria-pressed="false">
+      <svg viewBox="0 0 24 24"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+    </button>
     <div class="vol">
       <svg viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0 0 14 7.97v8.05A4.47 4.47 0 0 0 16.5 12z"/></svg>
       <input type="range" id="vol" min="0" max="100" value="50" aria-label="Volume">
     </div>
-    <div class="progress"><i id="progress"></i></div>
+    <div class="seek" id="seek" role="slider" aria-label="Seek" tabindex="0">
+      <div class="seek-rail"><i id="seek-fill"></i></div>
+      <span class="seek-knob" id="seek-knob"></span>
+      <span class="seek-time" id="seek-time">0:00</span>
+    </div>
   </div>
 
   <script>
     const api = window.soulOverlay;
     const vol = document.getElementById('vol');
-    const progress = document.getElementById('progress');
+    const seek = document.getElementById('seek');
+    const seekFill = document.getElementById('seek-fill');
+    const seekKnob = document.getElementById('seek-knob');
+    const seekTime = document.getElementById('seek-time');
+    const repeatBtn = document.querySelector('.repeat');
     const pill = document.getElementById('pill');
     const art = document.getElementById('art');
     const pillBg = document.getElementById('pill-bg');
@@ -254,10 +321,81 @@
 
     art.addEventListener('error', () => art.removeAttribute('src'));
 
+    // Playback position: the app reports it twice a second, so between reports it's moved forward locally.
+    const fmt = (sec) => {
+      const t = Math.max(0, Math.floor(sec || 0));
+      return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
+    };
+    let pos = 0;
+    let dur = 0;
+    let isPlaying = false;
+    let reportedAt = performance.now();
+    let seekingTo = null;
+
+    const fracFromX = (x) => {
+      const r = seek.getBoundingClientRect();
+      return r.width ? Math.max(0, Math.min(1, (x - r.left) / r.width)) : 0;
+    };
+
+    function paintSeek(frac) {
+      seekFill.style.transform = `scaleX(${frac})`;
+      seekKnob.style.left = `${frac * 100}%`;
+    }
+
+    (function tick() {
+      if (seekingTo === null) {
+        const live = isPlaying ? pos + (performance.now() - reportedAt) / 1000 : pos;
+        paintSeek(dur ? Math.min(1, live / dur) : 0);
+      }
+      requestAnimationFrame(tick);
+    })();
+
+    seek.addEventListener('pointermove', (e) => {
+      const f = fracFromX(e.clientX);
+      seekTime.textContent = fmt(f * dur);
+      seekTime.style.left = `${f * 100}%`;
+      if (seekingTo !== null) {
+        seekingTo = f;
+        paintSeek(f);
+      }
+    });
+    seek.addEventListener('pointerdown', (e) => {
+      if (!dur) return;
+      seek.setPointerCapture(e.pointerId);
+      document.body.classList.add('seeking');
+      seekingTo = fracFromX(e.clientX);
+      paintSeek(seekingTo);
+    });
+    const finishSeek = () => {
+      if (seekingTo === null) return;
+      const target = seekingTo * dur;
+      seekingTo = null;
+      document.body.classList.remove('seeking');
+      pos = target;
+      reportedAt = performance.now();
+      if (api) api.command('seek', target);
+    };
+    seek.addEventListener('pointerup', finishSeek);
+    seek.addEventListener('lostpointercapture', finishSeek);
+    seek.addEventListener('keydown', (e) => {
+      if (!dur || (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight')) return;
+      e.preventDefault();
+      pos = Math.max(0, Math.min(dur - 0.5, pos + (e.key === 'ArrowRight' ? 5 : -5)));
+      reportedAt = performance.now();
+      if (api) api.command('seek', pos);
+    });
+
     if (api) {
       api.onState((s) => {
         if (!s) return;
         document.body.classList.toggle('playing', !!s.playing);
+        document.body.classList.toggle('repeat-on', !!s.repeat);
+        repeatBtn.setAttribute('aria-pressed', s.repeat ? 'true' : 'false');
+        isPlaying = !!s.playing;
+        dur = Number(s.duration) || 0;
+        pos = Number(s.position) || 0;
+        reportedAt = performance.now();
+        seek.setAttribute('aria-valuetext', `${fmt(pos)} of ${fmt(dur)}`);
         titleEl.textContent = s.title || 'Nothing playing';
         artistEl.textContent = s.artist || 'Soulleak';
         pill.title = s.title ? `${s.title}${s.artist ? ' · ' + s.artist : ''}` : '';
@@ -275,7 +413,6 @@
           vol.value = Math.round(s.volume * 100);
           paintVolume();
         }
-        progress.style.transform = `scaleX(${s.duration ? Math.min(1, s.position / s.duration) : 0})`;
       });
     }
     paintVolume();

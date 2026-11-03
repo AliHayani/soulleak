@@ -18337,6 +18337,12 @@ function bindCoverHoldZoom(wrapEl) {
       else if (action === 'volume-up') adjustVolume(0.05);
       else if (action === 'volume-down') adjustVolume(-0.05);
       else if (action === 'set-volume' && Number.isFinite(Number(value))) adjustVolume(Number(value) - state.volume);
+      else if (action === 'toggle-repeat') window.toggleRepeat();
+      else if (action === 'seek' && Number.isFinite(Number(value)) && el.nativeAudio) {
+        const d = el.nativeAudio.duration;
+        el.nativeAudio.currentTime = Math.max(0, Math.min(Number.isFinite(d) ? d - 0.5 : Number(value), Number(value)));
+        updateMediaPositionState();
+      }
     });
   }
 
@@ -18351,8 +18357,9 @@ function bindCoverHoldZoom(wrapEl) {
         artist: (t && t.artist) || '',
         art: t ? ((document.getElementById('playbar-artwork') || {}).src || getTrackThumbUrl(t) || '') : '',
         playing: !!state.isPlaying,
+        repeat: !!state.isRepeat,
         volume: state.isMuted ? 0 : state.volume,
-        position: audio && Number.isFinite(audio.currentTime) ? Math.round(audio.currentTime) : 0,
+        position: audio && Number.isFinite(audio.currentTime) ? Math.round(audio.currentTime * 4) / 4 : 0,
         duration: audio && Number.isFinite(audio.duration) ? Math.round(audio.duration) : 0
       };
       const key = JSON.stringify(snapshot);
