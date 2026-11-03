@@ -113,7 +113,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   youtubePlaybackStatus: () => ipcRenderer.invoke('youtube-playback-status'),
   onYoutubePlaybackAuth: (callback) => ipcRenderer.on('youtube-playback-auth', (event, result) => callback(result)),
   savePlaylistsJson: (payload) => ipcRenderer.invoke('save-playlists-json', payload),
-  showPlaylistContextMenu: (playlistId) => ipcRenderer.invoke('show-playlist-context-menu', playlistId),
+  showPlaylistContextMenu: (playlistId, info) => ipcRenderer.invoke('show-playlist-context-menu', playlistId, info),
   accountExport: (payload) => ipcRenderer.invoke('account-export', payload),
   accountImport: () => ipcRenderer.invoke('account-import'),
   storageInitSync: () => ipcRenderer.sendSync('storage-get-all-sync'),

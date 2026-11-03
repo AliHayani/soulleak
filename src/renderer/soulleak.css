@@ -2630,3 +2630,25 @@ body .track-row .track-row-actions > button.btn-row-queue.btn-icon-pill:not(.btn
 .audio-tab-reset-row { display: flex; justify-content: flex-end; margin-top: 14px; }
 .audio-tab-reset { height: 32px; padding: 0 14px; font-size: 12.5px; opacity: 0.8; }
 .audio-tab-reset:hover { opacity: 1; }
+
+/* Drag a playlist onto another in the sidebar to merge them. */
+body.ob-dragging-playlist, body.ob-dragging-playlist * { cursor: grabbing !important; user-select: none; }
+.sb-lib-row.ob-drag-source { opacity: 0.4; }
+.sb-lib-row.ob-drop-target {
+  background: rgba(139, 92, 246, 0.16) !important;
+  box-shadow: inset 0 0 0 2px var(--ob-violet), 0 0 18px rgba(139, 92, 246, 0.45);
+}
+.ob-drag-ghost {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 10070;
+  pointer-events: none;
+  border-radius: 10px;
+  background: rgba(16, 13, 26, 0.92) !important;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6), inset 0 0 0 1px var(--ob-line-strong);
+  opacity: 0.95;
+  transition: none !important;
+}
+.ob-merge .ob-stall-card { text-align: left; }
+.ob-merge .ob-stall-card h3 { margin-top: 2px; }

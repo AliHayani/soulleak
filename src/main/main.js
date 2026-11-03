@@ -1362,12 +1362,15 @@ function runGUI() {
         }
       });
 
-      ipcMain.handle('show-playlist-context-menu', async (event) => {
+      ipcMain.handle('show-playlist-context-menu', async (event, playlistId, info = {}) => {
         const win = BrowserWindow.fromWebContents(event.sender) || mainWindow;
+        const mergedCount = Number(info && info.mergedCount) || 0;
         return new Promise((resolve) => {
           const menu = Menu.buildFromTemplate([
             { label: 'Open', click: () => resolve('open') },
             { label: 'Export as JSON', click: () => resolve('export') },
+            // Merged playlists can be split back into the playlists they came from.
+            ...(mergedCount > 1 ? [{ label: `Unmerge playlists (${mergedCount})`, click: () => resolve('unmerge') }] : []),
             { type: 'separator' },
             { label: 'Delete playlist…', click: () => resolve('delete') }
           ]);

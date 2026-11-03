@@ -13425,6 +13425,8 @@ function renderClickableArtists(container, rawArtist, hintTrack = null) {
         const newName = el.playlistDetailTitle.textContent.trim() || pl.name || 'Untitled';
         if (pl.name !== newName) {
           pl.name = newName;
+          // A renamed merged playlist keeps its name when more playlists are merged in.
+          if (Array.isArray(pl.mergedFrom)) pl.nameAuto = false;
           localStorage.setItem('devsize_playlists', JSON.stringify(state.playlists));
           renderPlaylistsList();
         }
@@ -13553,11 +13555,173 @@ function renderClickableArtists(container, rawArtist, hintTrack = null) {
     e.preventDefault();
     e.stopPropagation();
     if (!window.electronAPI || !window.electronAPI.showPlaylistContextMenu) return;
-    const act = await window.electronAPI.showPlaylistContextMenu(playlistId);
+    const pl = state.playlists.find(p => p.id === playlistId);
+    const mergedCount = pl && Array.isArray(pl.mergedFrom) ? pl.mergedFrom.length : 0;
+    const act = await window.electronAPI.showPlaylistContextMenu(playlistId, { mergedCount });
     if (act === 'open') openPlaylistDetail(playlistId);
     else if (act === 'export') exportSinglePlaylist(playlistId);
+    else if (act === 'unmerge') unmergePlaylist(playlistId);
     else if (act === 'delete') askDeletePlaylist(playlistId);
   }
+
+  // ---- Merging playlists: drag one playlist onto another in the sidebar ----
+  // A merged playlist keeps a snapshot of each original in `mergedFrom`, so it can be split back apart.
+
+  function trackKey(t) {
+    return t ? (getTrackCanonicalId(t) || `${t.title}::${t.artist}`) : '';
+  }
+
+  // The originals that make up a playlist (itself, or the snapshots it was merged from).
+  function playlistParts(pl) {
+    if (Array.isArray(pl.mergedFrom) && pl.mergedFrom.length) return pl.mergedFrom;
+    const { mergedFrom, nameAuto, ...plain } = pl;
+    return [JSON.parse(JSON.stringify(plain))];
+  }
+
+  function mergePlaylists(sourceId, targetId) {
+    const source = state.playlists.find(p => p.id === sourceId);
+    const target = state.playlists.find(p => p.id === targetId);
+    if (!source || !target || source === target) return;
+    const parts = [...playlistParts(target), ...playlistParts(source)];
+    const seen = new Set();
+    const tracks = [];
+    [...(target.tracks || []), ...(source.tracks || [])].forEach((t) => {
+      const k = trackKey(t);
+      if (!k || seen.has(k)) return;
+      seen.add(k);
+      tracks.push(t);
+    });
+    const autoName = parts.map(p => p.name || 'Untitled').join(' + ');
+    const merged = {
+      id: Array.isArray(target.mergedFrom) ? target.id : 'pl_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
+      // Keep a name the user typed; otherwise the merged name lists every part.
+      name: target.mergedFrom && target.nameAuto === false ? target.name : autoName,
+      nameAuto: target.mergedFrom && target.nameAuto === false ? false : true,
+      tracks,
+      mergedFrom: parts
+    };
+    if (target.cover) merged.cover = target.cover;
+    const at = state.playlists.indexOf(target);
+    state.playlists = state.playlists.filter(p => p !== source && p !== target);
+    state.playlists.splice(Math.min(at, state.playlists.length), 0, merged);
+    localStorage.setItem('devsize_playlists', JSON.stringify(state.playlists));
+    renderPlaylistsList();
+    if (typeof renderSidebarLibraryFeed === 'function') renderSidebarLibraryFeed();
+    if (typeof renderSpotifyHome === "function") renderSpotifyHome();
+    if ([source.id, target.id].includes(state.currentPlaylistId)) openPlaylistDetail(merged.id);
+    const dupes = (target.tracks || []).length + (source.tracks || []).length - tracks.length;
+    showToast(`Merged into "${merged.name}" · ${tracks.length} songs${dupes ? ` (${dupes} duplicate${dupes === 1 ? '' : 's'} skipped)` : ''}`, 'success');
+  }
+
+  function unmergePlaylist(playlistId) {
+    const merged = state.playlists.find(p => p.id === playlistId);
+    if (!merged || !Array.isArray(merged.mergedFrom) || !merged.mergedFrom.length) return;
+    const restored = merged.mergedFrom.map(p => JSON.parse(JSON.stringify(p)));
+    // Songs added to the merged playlist after merging go back into the first original.
+    const known = new Set(restored.flatMap(p => (p.tracks || []).map(trackKey)));
+    const extras = (merged.tracks || []).filter(t => !known.has(trackKey(t)));
+    if (extras.length) restored[0].tracks = [...(restored[0].tracks || []), ...extras];
+    const taken = new Set(state.playlists.filter(p => p !== merged).map(p => p.id));
+    restored.forEach((p) => { if (!p.id || taken.has(p.id)) p.id = 'pl_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7); taken.add(p.id); });
+    const at = state.playlists.indexOf(merged);
+    state.playlists.splice(at, 1, ...restored);
+    localStorage.setItem('devsize_playlists', JSON.stringify(state.playlists));
+    renderPlaylistsList();
+    if (typeof renderSidebarLibraryFeed === 'function') renderSidebarLibraryFeed();
+    if (typeof renderSpotifyHome === "function") renderSpotifyHome();
+    if (state.currentPlaylistId === merged.id) openPlaylistDetail(restored[0].id);
+    showToast(`Unmerged into ${restored.length} playlists`, 'success');
+  }
+
+  function askMergePlaylists(sourceId, targetId) {
+    const source = state.playlists.find(p => p.id === sourceId);
+    const target = state.playlists.find(p => p.id === targetId);
+    if (!source || !target || source === target) return;
+    document.querySelector('.ob-merge')?.remove();
+    const dlg = document.createElement('div');
+    dlg.className = 'ob-stall ob-merge';
+    dlg.setAttribute('role', 'alertdialog');
+    dlg.setAttribute('aria-labelledby', 'ob-merge-title');
+    const into = Array.isArray(target.mergedFrom) ? `Add <strong>${escapeHtml(source.name || 'Untitled')}</strong> to the merged playlist <strong>${escapeHtml(target.name || 'Untitled')}</strong>?`
+      : `Merge <strong>${escapeHtml(source.name || 'Untitled')}</strong> and <strong>${escapeHtml(target.name || 'Untitled')}</strong> into one playlist?`;
+    dlg.innerHTML = `
+      <div class="ob-stall-card">
+        <h3 id="ob-merge-title">Merge playlists?</h3>
+        <p>${into} Duplicate songs are skipped. You can split them again anytime: right-click › Unmerge playlists.</p>
+        <div class="ob-stall-actions">
+          <button type="button" class="ob-stall-primary" data-act="ok">Merge</button>
+          <button type="button" data-act="cancel">Cancel</button>
+        </div>
+      </div>`;
+    const close = () => { dlg.remove(); document.removeEventListener('keydown', onKey, true); };
+    const onKey = (e) => { if (e.key === 'Escape') close(); else if (e.key === 'Enter') { close(); mergePlaylists(sourceId, targetId); } };
+    dlg.addEventListener('click', (e) => {
+      const act = e.target.closest('[data-act]')?.dataset.act;
+      if (e.target === dlg || act === 'cancel') close();
+      else if (act === 'ok') { close(); mergePlaylists(sourceId, targetId); }
+    });
+    document.addEventListener('keydown', onKey, true);
+    document.body.appendChild(dlg);
+    dlg.querySelector('[data-act=ok]').focus();
+  }
+
+  // Pointer-based drag on the sidebar's playlist rows (the feed re-renders, so listen on the container).
+  (function setUpPlaylistMergeDrag() {
+    const feed = document.getElementById('sidebar-library-feed');
+    if (!feed) return;
+    let drag = null;
+    const rowAt = (x, y) => document.elementFromPoint(x, y)?.closest('#sidebar-library-feed .sb-lib-row[data-playlist-id]');
+    const end = () => {
+      if (!drag) return;
+      drag.ghost?.remove();
+      drag.row.classList.remove('ob-drag-source');
+      feed.querySelectorAll('.ob-drop-target').forEach(r => r.classList.remove('ob-drop-target'));
+      document.body.classList.remove('ob-dragging-playlist');
+      drag = null;
+    };
+    feed.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
+      const row = e.target.closest('.sb-lib-row[data-playlist-id]');
+      if (!row) return;
+      drag = { row, id: row.dataset.playlistId, x: e.clientX, y: e.clientY, started: false, ghost: null, pointerId: e.pointerId };
+    });
+    window.addEventListener('pointermove', (e) => {
+      if (!drag || e.pointerId !== drag.pointerId) return;
+      if (!drag.started) {
+        if (Math.hypot(e.clientX - drag.x, e.clientY - drag.y) < 7) return;
+        drag.started = true;
+        document.body.classList.add('ob-dragging-playlist');
+        drag.row.classList.add('ob-drag-source');
+        const ghost = drag.row.cloneNode(true);
+        ghost.className = 'sb-lib-row ob-drag-ghost';
+        ghost.style.width = `${drag.row.getBoundingClientRect().width}px`;
+        document.body.appendChild(ghost);
+        drag.ghost = ghost;
+      }
+      drag.ghost.style.transform = `translate(${e.clientX + 12}px, ${e.clientY - 26}px)`;
+      const over = rowAt(e.clientX, e.clientY);
+      feed.querySelectorAll('.ob-drop-target').forEach(r => { if (r !== over) r.classList.remove('ob-drop-target'); });
+      if (over && over !== drag.row) over.classList.add('ob-drop-target');
+    });
+    window.addEventListener('pointerup', (e) => {
+      if (!drag || e.pointerId !== drag.pointerId) return;
+      const { started, id } = drag;
+      const over = started ? rowAt(e.clientX, e.clientY) : null;
+      end();
+      if (!started) return;
+      // A real drag isn't a click: swallow the click that follows so the playlist doesn't open.
+      const swallow = (ev) => { ev.stopPropagation(); ev.preventDefault(); };
+      window.addEventListener('click', swallow, { capture: true, once: true });
+      setTimeout(() => window.removeEventListener('click', swallow, { capture: true }), 0);
+      if (over && over.dataset.playlistId !== id) askMergePlaylists(id, over.dataset.playlistId);
+    });
+    // Stop the browser's own image/link drag from stealing the pointer mid-drag.
+    feed.addEventListener('dragstart', (e) => {
+      if (e.target.closest?.('.sb-lib-row[data-playlist-id]')) e.preventDefault();
+    });
+    window.addEventListener('pointercancel', end);
+    window.addEventListener('blur', end);
+  })();
 
   let trackToAddToPlaylist = null;
   function openAddToPlaylistModal(track) {
