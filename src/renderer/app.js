@@ -900,7 +900,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   function sendDiscordRpcUpdate(track, isPlaying) {
     if (!window.electronAPI || !window.electronAPI.discordRpcUpdate) return;
-    if (!track || !isPlaying) {
+    // Nothing loaded: clear the status. A paused song stays on Discord, marked as paused.
+    if (!track) {
       if (window.electronAPI.discordRpcClear) window.electronAPI.discordRpcClear();
       return;
     }
@@ -923,6 +924,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       url: shareUrl,
       platform: track.platform || state.platform,
       effects: currentEffectsLabel(),
+      paused: !isPlaying,
       startTimestamp: Math.floor(Date.now() / 1000 - curSec)
     });
   }
@@ -8017,7 +8019,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if ('mediaSession' in navigator) {
       navigator.mediaSession.playbackState = state.isPlaying ? 'playing' : 'paused';
     }
-    sendDiscordRpcUpdate(null, false);
+    sendDiscordRpcUpdate(state.currentTrack, false);
     sendStateToServer();
     updateMediaSession();
 
@@ -8720,7 +8722,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if ('mediaSession' in navigator) {
           navigator.mediaSession.playbackState = state.isPlaying ? 'playing' : 'paused';
         }
-        sendDiscordRpcUpdate(null, false);
+        sendDiscordRpcUpdate(state.currentTrack, false);
         sendStateToServer();
         updateMediaSession();
       }

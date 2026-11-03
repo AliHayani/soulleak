@@ -59,8 +59,10 @@ function _setActivity(trackInfo) {
   const cleanTitle = String(trackInfo.title || 'Unknown Track').substring(0, 128).padEnd(2, ' ');
   const effects = String(trackInfo.effects || '').trim().substring(0, 60);
   const artistText = showArtistStatus ? String(trackInfo.artist || 'Unknown Artist') : `by ${trackInfo.artist || 'Unknown Artist'}`;
-  // Active presets ride along after the artist, e.g. "Tobiahs · Slowed + reverb".
-  const stateText = (effects ? `${artistText} · ${effects}` : artistText).substring(0, 128).padEnd(2, ' ');
+  // Active presets ride along after the artist, e.g. "Tobiahs · Slowed + reverb". A paused song says so up front.
+  const paused = !!trackInfo.paused;
+  const stateBase = effects ? `${artistText} · ${effects}` : artistText;
+  const stateText = (paused ? `Paused · ${stateBase}` : stateBase).substring(0, 128).padEnd(2, ' ');
   const baseActivity = {
     type: 2,
     details: cleanTitle,
@@ -70,11 +72,13 @@ function _setActivity(trackInfo) {
       large_image: trackInfo.thumbnail || LOGO_ASSET,
       large_text: (effects ? `${cleanTitle.trim()} · ${effects}` : cleanTitle.trim()).substring(0, 128).padEnd(2, ' '),
       small_image: LOGO_ASSET,
-      small_text: effects ? `Soulleak · ${effects}`.substring(0, 128) : 'Soulleak'
+      small_text: paused ? 'Paused' : (effects ? `Soulleak · ${effects}`.substring(0, 128) : 'Soulleak')
     },
     instance: false,
   };
-  if (trackInfo.duration && trackInfo.duration > 0) {
+  // No clock while paused, so Discord doesn't keep counting up.
+  if (paused) delete baseActivity.timestamps;
+  else if (trackInfo.duration && trackInfo.duration > 0) {
     baseActivity.timestamps.end = startEpoch + Math.floor(trackInfo.duration);
   }
   if (trackInfo.url && typeof trackInfo.url === 'string' && trackInfo.url.startsWith('https://') && trackInfo.url.length <= 512) {
