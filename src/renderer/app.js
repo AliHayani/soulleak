@@ -18475,8 +18475,8 @@ function bindCoverHoldZoom(wrapEl) {
   // Badges, checked against the counters. Earned ones stay earned (kept in localStorage) and get a toast once.
   const OB_BADGES = [
     {
-      id: 'true-larper',
-      name: 'True Larper',
+      id: 'parasocial',
+      name: 'Parasocial',
       need: '10 hours on one artist',
       goal: 10 * 3600,
       best: () => topStat('artist:'),
