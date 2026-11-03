@@ -2339,3 +2339,280 @@ body .track-row .track-row-actions > button.btn-row-queue.btn-icon-pill:not(.btn
 
 /* Sidebar Queue tab only exists while songs are queued. */
 #sidebar-lib-chips [data-lib-filter="queue"][hidden] { display: none !important; }
+
+/* ---- Seek bar: thin rail, violet fill, a knob that grows on hover, hover time ---- */
+#scrubber-track .squiggly-canvas { display: none !important; }
+
+.playbar .time-label { opacity: 1 !important; pointer-events: auto !important; }
+
+.ob-seek {
+  position: absolute;
+  left: 5.5px;
+  right: 5.5px;
+  top: 50%;
+  height: 16px;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.ob-seek-rail {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 4px;
+  transform: translateY(-50%);
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+  transition: height 0.16s ease;
+}
+
+.ob-seek-rail i {
+  position: absolute;
+  inset: 0;
+  transform-origin: left center;
+  transform: scaleX(0);
+  will-change: transform;
+}
+
+.ob-seek-buf { background: rgba(255, 255, 255, 0.12); }
+.ob-seek-fill { background: var(--ob-grad); }
+
+.ob-seek-thumb {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 14px;
+  height: 14px;
+  margin-left: -7px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 0 0 4px rgba(139, 92, 246, 0.35), 0 0 14px rgba(139, 92, 246, 0.8);
+  transform: translateY(-50%) scale(0);
+  transition: transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.ob-seek-tip {
+  position: absolute;
+  bottom: 18px;
+  left: 0;
+  padding: 3px 7px;
+  border-radius: 6px;
+  background: rgba(10, 9, 15, 0.95);
+  border: 1px solid rgba(139, 92, 246, 0.4);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  transform: translateX(-50%) translateY(4px);
+  opacity: 0;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+#scrubber-track:hover .ob-seek-rail,
+#scrubber-track.dragging .ob-seek-rail,
+#scrubber-track:focus-visible .ob-seek-rail { height: 6px; }
+
+#scrubber-track:hover .ob-seek-thumb,
+#scrubber-track.dragging .ob-seek-thumb,
+#scrubber-track:focus-visible .ob-seek-thumb { transform: translateY(-50%) scale(1); }
+
+#scrubber-track.dragging .ob-seek-thumb { transform: translateY(-50%) scale(1.2); }
+
+#scrubber-track:hover .ob-seek-tip { opacity: 1; transform: translateX(-50%) translateY(0); }
+#scrubber-track.dragging .ob-seek-tip { opacity: 0; }
+#scrubber-track:focus-visible { outline: none; }
+
+/* ---- Repeat this song: glowing violet when on, with a small "1" ---- */
+#btn-repeat { position: relative; }
+
+#btn-repeat.active {
+  color: #fff !important;
+  background: rgba(139, 92, 246, 0.22) !important;
+  box-shadow: inset 0 0 0 1px rgba(139, 92, 246, 0.7), 0 0 16px rgba(139, 92, 246, 0.55) !important;
+}
+
+#btn-repeat.active svg { filter: drop-shadow(0 0 4px rgba(196, 181, 253, 0.9)); }
+
+#btn-repeat.active::before {
+  content: '1';
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: var(--ob-grad);
+  color: #fff;
+  font-size: 8.5px;
+  font-weight: 800;
+  line-height: 13px;
+  text-align: center;
+}
+
+/* ---- Fullscreen lyrics: font + color, with a matching glow behind the lyrics ---- */
+@property --fs-lyric-color {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #ffffff;
+}
+
+.soul-fs { transition: --fs-lyric-color 0.7s ease; }
+
+.soul-fs-line {
+  font-family: var(--fs-lyric-font, var(--sl-display)) !important;
+  font-weight: var(--fs-lyric-weight, 750) !important;
+}
+
+.soul-fs-line.is-active {
+  color: var(--fs-lyric-color, #fff);
+  text-shadow: 0 0 34px color-mix(in srgb, var(--fs-lyric-color, #fff) 50%, transparent);
+}
+
+.soul-fs.has-lyric-tint .soul-fs-line.is-past { color: color-mix(in srgb, var(--fs-lyric-color) 45%, rgba(255, 255, 255, 0.25)); }
+
+/* The glow sits between the blurred cover and the lyrics, centred on the lyrics column, and breathes with the beat. */
+.soul-fs-glow {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background:
+    radial-gradient(55% 65% at 70% 50%, color-mix(in srgb, var(--fs-lyric-color) 28%, transparent), transparent 70%),
+    radial-gradient(30% 38% at 70% 50%, color-mix(in srgb, var(--fs-lyric-color) 16%, transparent), transparent 75%);
+  opacity: calc(0.85 + var(--beat, 0) * 0.35);
+}
+
+.soul-fs:not(.has-lyric-tint) .soul-fs-glow { opacity: calc(0.3 + var(--beat, 0) * 0.2); }
+.soul-fs.no-lyrics .soul-fs-glow { background: radial-gradient(50% 60% at 50% 50%, color-mix(in srgb, var(--fs-lyric-color) 18%, transparent), transparent 70%); }
+
+/* Style pill: top right, next to the close button; faint until you hover it. */
+.soul-fs-style {
+  position: absolute;
+  top: 26px;
+  right: 80px;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px 5px 5px;
+  border-radius: 999px;
+  background: rgba(10, 9, 15, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(14px);
+  opacity: 0.45;
+  transition: opacity 0.25s ease, border-color 0.25s ease;
+}
+
+.soul-fs-style:hover,
+.soul-fs-style:focus-within { opacity: 1; border-color: color-mix(in srgb, var(--fs-lyric-color) 40%, transparent); }
+
+.soul-fs-font-wrap { position: relative; }
+
+.soul-fs-font-btn {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 30px;
+  padding: 0 10px 0 6px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.07);
+  color: #fff;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.soul-fs-font-btn:hover { background: rgba(255, 255, 255, 0.13); }
+
+.soul-fs-font-aa {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--fs-lyric-color, #fff);
+  color: #0b0a10;
+  font-family: var(--fs-lyric-font, var(--sl-display));
+  font-size: 10.5px;
+  font-weight: 800;
+}
+
+.soul-fs-font-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  display: flex;
+  flex-direction: column;
+  min-width: 190px;
+  padding: 6px;
+  border-radius: 14px;
+  background: rgba(10, 9, 15, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
+  opacity: 0;
+  transform: translateY(-6px);
+  pointer-events: none;
+  transition: opacity 0.16s ease, transform 0.2s ease;
+}
+
+.soul-fs-font-menu.open { opacity: 1; transform: none; pointer-events: auto; }
+
+.soul-fs-font-menu button {
+  height: 38px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 16px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.soul-fs-font-menu button:hover { background: rgba(255, 255, 255, 0.08); color: #fff; }
+.soul-fs-font-menu button[aria-selected="true"] { color: var(--fs-lyric-color, #fff); background: rgba(255, 255, 255, 0.06); }
+
+.soul-fs-style-sep { width: 1px; height: 18px; background: rgba(255, 255, 255, 0.12); }
+
+.soul-fs-swatches { display: flex; gap: 6px; }
+
+.soul-fs-swatch {
+  position: relative;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--sw);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.2);
+  cursor: pointer;
+  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.2s ease;
+}
+
+.soul-fs-swatch:hover { transform: scale(1.15); }
+
+.soul-fs-swatch[aria-checked="true"],
+.soul-fs-swatch-custom.is-on {
+  box-shadow: 0 0 0 2px #0b0a10, 0 0 0 4px var(--sw, var(--fs-lyric-color)), 0 0 14px var(--sw, var(--fs-lyric-color));
+}
+
+/* Any color: a rainbow swatch wrapping the native picker. */
+.soul-fs-swatch-custom {
+  display: block;
+  overflow: hidden;
+  background: conic-gradient(#f87171, #fbbf24, #a3e635, #67e8f9, #a78bfa, #f472b6, #f87171);
+}
+
+.soul-fs-swatch-custom input {
+  position: absolute;
+  inset: -6px;
+  width: 32px;
+  height: 32px;
+  opacity: 0;
+  cursor: pointer;
+}

@@ -650,7 +650,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   const defaultPresets = [
     { id: 'p_default', name: 'Default', settings: { speed: 1.0, speedPitch: 1.0, pitch: 0, reverb: 0, distortion: 0, volume: 1.0, echo: 0, eq: { low: 0, mid: 0, high: 0 }, eqBands: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0] } },
-    { id: 'p_speedup_pitch', name: 'Speed up', settings: { speed: 1.0, speedPitch: 1.30, pitch: 0, reverb: 0, distortion: 0, volume: 1.0, echo: 0, eq: { low: 0, mid: 0, high: 0 }, eqBands: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0] } },
     { id: 'p_slowed', name: 'Slowed + reverb', settings: { speed: 1.0, speedPitch: 0.82, pitch: 0, reverb: 65, distortion: 0, volume: 1.0, echo: 15, eq: { low: 0, mid: 0, high: 0 }, eqBands: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0] } },
     { id: 'p_nightcore', name: 'Nightcore', settings: { speed: 1.0, speedPitch: 1.25, pitch: 0, reverb: 20, distortion: 0, volume: 1.0, echo: 0, eq: { low: 0, mid: 0, high: 0 }, eqBands: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0] } },
     { id: 'p_8d', name: '8D Audio', settings: { speed: 1.0, speedPitch: 1.0, pitch: 0, reverb: 12, distortion: 0, volume: 1.0, echo: 0, spatial8d: 1, eq: { low: 0, mid: 0, high: 0 }, eqBands: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0] } },
@@ -18350,6 +18349,7 @@ function bindCoverHoldZoom(wrapEl) {
       const snapshot = {
         title: (t && t.title) || '',
         artist: (t && t.artist) || '',
+        art: t ? ((document.getElementById('playbar-artwork') || {}).src || getTrackThumbUrl(t) || '') : '',
         playing: !!state.isPlaying,
         volume: state.isMuted ? 0 : state.volume,
         position: audio && Number.isFinite(audio.currentTime) ? Math.round(audio.currentTime) : 0,
@@ -18363,6 +18363,83 @@ function bindCoverHoldZoom(wrapEl) {
   }
 
   // ---- Obsidian Premium layout: mood input, listening level, fx tags, mini-player button, Up Next ----
+
+  // Seek bar. Riff's mouse handlers on #scrubber-track still do the seeking (click or drag); this draws the bar
+  // itself (played and buffered fill, knob, hover time) and adds keyboard seeking.
+  (function setUpSeekBar() {
+    const track = el.scrubberTrack;
+    const fill = document.getElementById('ob-seek-fill');
+    const buf = document.getElementById('ob-seek-buf');
+    const thumb = document.getElementById('ob-seek-thumb');
+    const tip = document.getElementById('ob-seek-tip');
+    if (!track || !fill || !buf || !thumb || !tip) return;
+    const PAD = 5.5; // same inset Riff's seek math uses
+    const duration = () => {
+      const a = el.nativeAudio;
+      if (a && Number.isFinite(a.duration) && a.duration > 0) return a.duration;
+      return (state.currentTrack && Number.isFinite(state.currentTrack.duration) && state.currentTrack.duration) || 0;
+    };
+    const posFromX = (x) => {
+      const r = track.getBoundingClientRect();
+      const w = r.width - 2 * PAD;
+      return w > 0 ? Math.max(0, Math.min(1, (x - r.left - PAD) / w)) : 0;
+    };
+    let lastPct = -1;
+    let lastBuf = -1;
+    let lastMax = -1;
+    const paint = () => {
+      const a = el.nativeAudio;
+      const d = duration();
+      const t = state.scrubberDragTargetTime !== undefined ? state.scrubberDragTargetTime : (a ? a.currentTime || 0 : 0);
+      const pct = d ? Math.min(1, t / d) : 0;
+      if (Math.abs(pct - lastPct) > 0.0004) {
+        lastPct = pct;
+        fill.style.transform = `scaleX(${pct})`;
+        thumb.style.left = `${pct * 100}%`;
+        track.setAttribute('aria-valuenow', String(Math.round(t)));
+        track.setAttribute('aria-valuetext', formatDuration(t));
+      }
+      if (Math.round(d) !== lastMax) {
+        lastMax = Math.round(d);
+        track.setAttribute('aria-valuemax', String(lastMax));
+      }
+      let b = 0;
+      if (a && d && a.buffered && a.buffered.length) b = Math.min(1, a.buffered.end(a.buffered.length - 1) / d);
+      if (Math.abs(b - lastBuf) > 0.002) {
+        lastBuf = b;
+        buf.style.transform = `scaleX(${b})`;
+      }
+      requestAnimationFrame(paint);
+    };
+    requestAnimationFrame(paint);
+
+    track.addEventListener('mousemove', (e) => {
+      const p = posFromX(e.clientX);
+      tip.textContent = formatDuration(p * duration());
+      tip.style.left = `${p * 100}%`;
+    });
+    track.addEventListener('keydown', (e) => {
+      const a = el.nativeAudio;
+      const d = duration();
+      if (!a || !d) return;
+      let next = null;
+      if (e.key === 'ArrowRight') next = a.currentTime + (e.shiftKey ? 15 : 5);
+      else if (e.key === 'ArrowLeft') next = a.currentTime - (e.shiftKey ? 15 : 5);
+      else if (e.key === 'Home') next = 0;
+      else if (e.key === 'End') next = d - 1;
+      if (next === null) return;
+      e.preventDefault();
+      e.stopPropagation();
+      a.currentTime = Math.max(0, Math.min(d - 0.5, next));
+      updateMediaPositionState();
+    });
+  })();
+
+  if (el.btnRepeat) {
+    el.btnRepeat.title = 'Repeat this song';
+    el.btnRepeat.setAttribute('aria-pressed', state.isRepeat ? 'true' : 'false');
+    el.btnRepeat.addEventListener('click', () => el.btnRepeat.setAttribute('aria-pressed', state.isRepeat ? 'true' : 'false'));
+  }
 
   // Keeps every queue indicator in step: the Up Next badge, the row buttons, the open flyout, and the sidebar
   // Queue tab, which only shows while there are songs the user queued. Runs early (from updateQueueBadge),
@@ -21500,6 +21577,105 @@ function bindCoverHoldZoom(wrapEl) {
     }
   }
 
+  // Lyrics look: font and active-line color, saved between sessions. The color also tints a soft glow behind
+  // the lyrics and the beat wave, so the whole screen leans into it.
+  const FS_STYLE_KEY = 'soulleak_fs_lyrics_style';
+  const FS_FONTS = [
+    { id: 'bricolage', name: 'Bricolage', stack: "'Bricolage Grotesque', var(--sl-display)", weight: 750 },
+    { id: 'syne', name: 'Syne', stack: "'Syne', sans-serif", weight: 800 },
+    { id: 'playfair', name: 'Playfair', stack: "'Playfair Display', Georgia, serif", weight: 700 },
+    { id: 'space', name: 'Space Grotesk', stack: "'Space Grotesk', sans-serif", weight: 700 },
+    { id: 'mono', name: 'JetBrains Mono', stack: "'JetBrains Mono', ui-monospace, monospace", weight: 700 }
+  ];
+  const FS_COLORS = ['#ffffff', '#a78bfa', '#67e8f9', '#f472b6', '#a3e635', '#fbbf24'];
+  let fsFontsLoaded = false;
+
+  function fsLoadLyricFonts() {
+    if (fsFontsLoaded) return;
+    fsFontsLoaded = true;
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = 'https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=Playfair+Display:ital,wght@0,700;1,700&family=Space+Grotesk:wght@600;700&family=JetBrains+Mono:wght@600;700&display=swap';
+    document.head.appendChild(link);
+  }
+
+  function fsLyricStyle() {
+    try {
+      const s = JSON.parse(localStorage.getItem(FS_STYLE_KEY) || '{}') || {};
+      return {
+        font: FS_FONTS.some((f) => f.id === s.font) ? s.font : 'bricolage',
+        color: /^#[0-9a-f]{6}$/i.test(s.color || '') ? s.color : '#ffffff'
+      };
+    } catch (_) {
+      return { font: 'bricolage', color: '#ffffff' };
+    }
+  }
+
+  function fsApplyLyricStyle(style) {
+    if (!soulFs.root) return;
+    const font = FS_FONTS.find((f) => f.id === style.font) || FS_FONTS[0];
+    if (font.id !== 'bricolage') fsLoadLyricFonts();
+    soulFs.root.style.setProperty('--fs-lyric-font', font.stack);
+    soulFs.root.style.setProperty('--fs-lyric-weight', String(font.weight));
+    soulFs.root.style.setProperty('--fs-lyric-color', style.color);
+    soulFs.root.classList.toggle('has-lyric-tint', style.color.toLowerCase() !== '#ffffff');
+    soulFs.lyricColor = style.color;
+    const nameEl = document.getElementById('soul-fs-font-name');
+    if (nameEl) nameEl.textContent = font.name;
+    document.querySelectorAll('#soul-fs-font-menu [data-font]').forEach((b) => b.setAttribute('aria-selected', b.dataset.font === font.id ? 'true' : 'false'));
+    let matched = false;
+    document.querySelectorAll('#soul-fs-swatches [data-color]').forEach((b) => {
+      const on = b.dataset.color.toLowerCase() === style.color.toLowerCase();
+      matched = matched || on;
+      b.setAttribute('aria-checked', on ? 'true' : 'false');
+    });
+    const custom = document.getElementById('soul-fs-color-input');
+    if (custom) {
+      custom.closest('.soul-fs-swatch-custom').classList.toggle('is-on', !matched);
+      if (!matched) custom.value = style.color;
+    }
+  }
+
+  function fsSaveLyricStyle(patch) {
+    const next = { ...fsLyricStyle(), ...patch };
+    localStorage.setItem(FS_STYLE_KEY, JSON.stringify(next));
+    fsApplyLyricStyle(next);
+  }
+
+  (function setUpLyricStyleUi() {
+    const menu = document.getElementById('soul-fs-font-menu');
+    const btn = document.getElementById('soul-fs-font-btn');
+    const swatches = document.getElementById('soul-fs-swatches');
+    const custom = document.getElementById('soul-fs-color-input');
+    if (!menu || !btn || !swatches) return;
+    menu.innerHTML = FS_FONTS.map((f) => `<button type="button" role="option" data-font="${f.id}" style="font-family:${f.stack};font-weight:${f.weight}">${escapeHtml(f.name)}</button>`).join('');
+    swatches.innerHTML = FS_COLORS.map((c) => `<button type="button" role="radio" class="soul-fs-swatch" data-color="${c}" style="--sw:${c}" aria-label="Lyrics color ${c}"></button>`).join('');
+    const setMenu = (open) => {
+      menu.classList.toggle('open', open);
+      btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+      if (open) fsLoadLyricFonts();
+    };
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      setMenu(!menu.classList.contains('open'));
+    });
+    menu.addEventListener('click', (e) => {
+      const opt = e.target.closest('[data-font]');
+      if (!opt) return;
+      fsSaveLyricStyle({ font: opt.dataset.font });
+      setMenu(false);
+    });
+    swatches.addEventListener('click', (e) => {
+      const sw = e.target.closest('[data-color]');
+      if (sw) fsSaveLyricStyle({ color: sw.dataset.color });
+    });
+    if (custom) custom.addEventListener('input', () => fsSaveLyricStyle({ color: custom.value }));
+    soulFs.root?.addEventListener('pointerdown', (e) => {
+      if (!e.target.closest('.soul-fs-font-wrap')) setMenu(false);
+    });
+    fsApplyLyricStyle(fsLyricStyle());
+  })();
+
   function fsDrawWave() {
     const canvas = soulFs.wave;
     const w = canvas.clientWidth;
@@ -21564,10 +21740,12 @@ function bindCoverHoldZoom(wrapEl) {
     const gap = 3;
     const barW = (w - gap * (n - 1)) / n;
     const mid = h / 2;
+    // Violet by default; a chosen lyrics color carries over to the wave.
+    const tint = soulFs.lyricColor && soulFs.lyricColor.toLowerCase() !== '#ffffff' ? soulFs.lyricColor : null;
     const grad = ctx.createLinearGradient(0, 0, w, 0);
-    grad.addColorStop(0, '#c4b5fd');
-    grad.addColorStop(0.5, '#8b5cf6');
-    grad.addColorStop(1, '#6366f1');
+    grad.addColorStop(0, tint ? '#ffffff' : '#c4b5fd');
+    grad.addColorStop(0.5, tint || '#8b5cf6');
+    grad.addColorStop(1, tint || '#6366f1');
     ctx.fillStyle = grad;
     for (let i = 0; i < n; i++) {
       const v = Math.max(0.04, soulFs.bars[i]);

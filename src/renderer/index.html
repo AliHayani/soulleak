@@ -2916,7 +2916,12 @@
 
       <div class="scrubber-bar-wrapper">
         <span class="time-label" id="time-current">0:00</span>
-        <div class="scrubber-track-container" id="scrubber-track">
+        <div class="scrubber-track-container" id="scrubber-track" role="slider" tabindex="0" aria-label="Seek" aria-valuemin="0" aria-valuemax="0" aria-valuenow="0">
+          <div class="ob-seek" aria-hidden="true">
+            <div class="ob-seek-rail"><i class="ob-seek-buf" id="ob-seek-buf"></i><i class="ob-seek-fill" id="ob-seek-fill"></i></div>
+            <span class="ob-seek-thumb" id="ob-seek-thumb"></span>
+            <span class="ob-seek-tip" id="ob-seek-tip">0:00</span>
+          </div>
         </div>
         <span class="time-label" id="time-duration">0:00</span>
       </div>
@@ -4385,6 +4390,21 @@
 
   <div class="soul-fs" id="soul-fs" aria-hidden="true">
     <div class="soul-fs-bg" id="soul-fs-bg"></div>
+    <div class="soul-fs-glow" aria-hidden="true"></div>
+    <div class="soul-fs-style" id="soul-fs-style" role="group" aria-label="Lyrics style">
+      <div class="soul-fs-font-wrap">
+        <button type="button" class="soul-fs-font-btn" id="soul-fs-font-btn" aria-haspopup="listbox" aria-expanded="false" title="Lyrics font">
+          <span class="soul-fs-font-aa">Aa</span><span id="soul-fs-font-name">Bricolage</span>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+        <div class="soul-fs-font-menu" id="soul-fs-font-menu" role="listbox" aria-label="Lyrics font"></div>
+      </div>
+      <span class="soul-fs-style-sep" aria-hidden="true"></span>
+      <div class="soul-fs-swatches" id="soul-fs-swatches" role="radiogroup" aria-label="Lyrics color"></div>
+      <label class="soul-fs-swatch soul-fs-swatch-custom" title="Pick any color">
+        <input type="color" id="soul-fs-color-input" value="#a78bfa" aria-label="Custom lyrics color">
+      </label>
+    </div>
     <button type="button" class="soul-fs-close" id="soul-fs-close" title="Exit fullscreen (Esc)" aria-label="Exit fullscreen">
       <svg viewBox="0 0 24 24"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg>
     </button>

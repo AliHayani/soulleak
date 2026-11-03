@@ -5,7 +5,7 @@ const path = require('path');
 const { readStartupConfig, writeStartupConfig } = require('../shared/platform');
 
 const OVERLAY_SHORTCUT = 'Control+Alt+I';
-const SIZE = { width: 312, height: 76 };
+const SIZE = { width: 500, height: 76 };
 const MARGIN = 18;
 const CORNERS = ['top-left', 'top-right', 'bottom-left', 'bottom-right'];
 
