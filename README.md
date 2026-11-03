@@ -1,234 +1,176 @@
 <p align="center">
-  <img src="banner.png?v=2" alt="Riff - desktop music player and audio suite for YouTube Music, SoundCloud, and local files" width="100%">
+  <!-- Hero banner placeholder: replace this URL with your own 1600x500 banner (e.g. github/readme/hero-banner.png). -->
+  <img src="https://placehold.co/1600x500/0b0a10/8b5cf6.png?text=SOULLEAK&font=montserrat" alt="Soulleak - gamified desktop music client" width="100%">
 </p>
 
 <p align="center">
-  <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/windows8/windows8-original.svg" width="22" height="22" alt="Windows">&nbsp;&nbsp;
-  <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/apple/apple-original.svg" width="22" height="22" alt="macOS">&nbsp;&nbsp;
-  <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/linux/linux-original.svg" width="22" height="22" alt="Linux">&nbsp;&nbsp;
-  <img src="https://cdn.simpleicons.org/ios/9ca3af" width="22" height="22" alt="iOS">&nbsp;&nbsp;
-  <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/android/android-original.svg" width="22" height="22" alt="Android">
+  <img src="assets/icon-1024.png" width="120" height="120" alt="Soulleak logo">
 </p>
 
-<h1 align="center">
-  <img src="github/readme/emoj2i.gif" width="48" height="48" align="absmiddle" alt="emoji">&nbsp;Riff
-</h1>
+<h1 align="center">Soulleak</h1>
 
 <p align="center">
-  <b>A free, open-source desktop music player for YouTube Music, SoundCloud, and local files.</b><br>
-  Built with Material Design 3, no tracking, and no account needed.
+  <b>A high-end, gamified desktop music client built for gaming and terminally-online internet culture.</b><br>
+  Pitch-black Obsidian UI, record-scratch exits, a mini-player that lives on top of your game, and a rank ladder that knows exactly how much you've been listening.
 </p>
 
 <p align="center">
-  <a href="https://github.com/rootscripts/riff/releases">
-    <img src="https://img.shields.io/badge/Download-6750A4?style=for-the-badge&logo=download&logoColor=white" height="40" alt="Download">
+  <img src="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/windows8/windows8-original.svg" width="22" height="22" alt="Windows">
+</p>
+
+<p align="center">
+  <a href="https://github.com/AliHayani/soulleak/releases">
+    <img src="https://img.shields.io/badge/Download-8B5CF6?style=for-the-badge&logo=windows&logoColor=white" height="40" alt="Download">
   </a>
   &nbsp;
-  <a href="https://riff.hs.vc">
-    <img src="https://img.shields.io/badge/Website-1F2328?style=for-the-badge&logo=open-webui&logoColor=white" height="40" alt="Visit Website">
+  <a href="#listening-ranks--badges">
+    <img src="https://img.shields.io/badge/Ranks-Spawn_→_True_Larper-6366F1?style=for-the-badge&logo=target&logoColor=white" height="40" alt="Ranks">
+  </a>
+  &nbsp;
+  <a href="#discord-rich-presence">
+    <img src="https://img.shields.io/badge/Discord-Rich_Presence-5865F2?style=for-the-badge&logo=discord&logoColor=white" height="40" alt="Discord Rich Presence">
   </a>
 </p>
 
 <p align="center">
-  <a href="#core-features">Features</a> &nbsp;·&nbsp;
-  <a href="#built-in-audio-suite">Audio Suite</a> &nbsp;·&nbsp;
-  <a href="#material-design-3-expressive-ui">Interface</a> &nbsp;·&nbsp;
+  <a href="#features">Features</a> &nbsp;·&nbsp;
+  <a href="#audio-suite">Audio Suite</a> &nbsp;·&nbsp;
+  <a href="#obsidian-premium-ui">Interface</a> &nbsp;·&nbsp;
+  <a href="#listening-ranks--badges">Ranks</a> &nbsp;·&nbsp;
   <a href="#download-and-install">Install</a> &nbsp;·&nbsp;
   <a href="#faq">FAQ</a> &nbsp;·&nbsp;
   <a href="#build-from-source">Build</a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/rootscripts/riff/stargazers"><img src="https://img.shields.io/github/stars/rootscripts/riff?style=flat-square&labelColor=16191C&color=CAD3F5" alt="Stars"></a>
-  <a href="https://github.com/rootscripts/riff/commits/main"><img src="https://img.shields.io/github/last-commit/rootscripts/riff?style=flat-square&labelColor=16191C&color=94C9FF" alt="Last Commit"></a>
-  <a href="https://github.com/rootscripts/riff/blob/main/LICENSE"><img src="https://img.shields.io/github/license/rootscripts/riff?style=flat-square&labelColor=16191C&color=8EEDD8" alt="License"></a>
-  <a href="https://ko-fi.com/rootlesszen"><img src="https://img.shields.io/badge/Ko--fi-support-FF5E5B?style=flat-square&logo=kofi&logoColor=white&labelColor=16191C" alt="Support on Ko-fi"></a>
+  <a href="https://github.com/AliHayani/soulleak/stargazers"><img src="https://img.shields.io/github/stars/AliHayani/soulleak?style=flat-square&labelColor=0B0A10&color=8B5CF6" alt="Stars"></a>
+  <a href="https://github.com/AliHayani/soulleak/commits/soulleak"><img src="https://img.shields.io/github/last-commit/AliHayani/soulleak/soulleak?style=flat-square&labelColor=0B0A10&color=6366F1" alt="Last Commit"></a>
+  <a href="https://github.com/AliHayani/soulleak/releases"><img src="https://img.shields.io/github/v/release/AliHayani/soulleak?style=flat-square&labelColor=0B0A10&color=C4B5FD&include_prereleases" alt="Release"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-A78BFA?style=flat-square&labelColor=0B0A10" alt="License"></a>
 </p>
 
-> [!IMPORTANT]
-> **Contributions & Pull Requests Policy**  
-> This project is actively developed and maintained exclusively by its core team. **Public Pull Requests are disabled and will not be accepted.**
-> 
-> * **Bugs:** Please report them via the Issues tab using the provided bug report template.
-> * **Custom features & experiments:** You are welcome to **fork the repository** and maintain your own builds.
-> * Please do not open issues requesting to enable PRs.
-> * We do not accept any users to our core team.
+> [!NOTE]
+> **Soulleak is a customized fork of [Riff](https://github.com/rootscripts/riff)** by rootscripts, the open-source desktop music player for YouTube Music, SoundCloud, and local files. Soulleak keeps Riff's playback engine and adds its own interface, audio presets, mini-player, gamification and Discord integration on top. Riff's original MIT license is preserved in [LICENSE](LICENSE).
 
-## What is Riff?
+## What is Soulleak?
 
-Riff is an open-source, telemetry-free desktop music app and player for **Windows, Linux, and macOS**. It unifies playback across **YouTube Music**, **YouTube**, **SoundCloud**, and offline local media into a single high-performance interface without ads, subscriptions, or login constraints. Provides very fancy UI and layout.
+Soulleak is a desktop music client for people who listen while they play. It streams from **YouTube Music**, **YouTube**, and **SoundCloud**, plays your **local files**, and wraps it all in a pitch-black, violet-lit interface built to sit next to a game on a second monitor, or on top of it.
 
-Built with **Electron**, **Vanilla JavaScript**, and **WebGL**, Riff provides responsive UI interactions and hardware-accelerated audio visualization without runtime framework overhead. The project is distributed under the **MIT license** and enforces strict privacy: all configuration, cached streams, and playback history remain strictly on the local machine.
+It's built with **Electron** and **vanilla JavaScript** (no framework), runs without ads or an account, and keeps your settings, history, and listening stats on your own machine.
 
 ## Features
 
-- High quality streaming with **YouTube Music, YouTube, and SoundCloud** without third-party advertisements or account requirements
-- **Offline lossless playback with full local library support** for high resolution formats including FLAC, WAV, MP3, OGG, and M4A.
-- **Easy built-in audio editor**, downloading with effects or trimming 10-band & 3-band equalizer, and real-time DSP effects (speed, pitch, reverb, distortion).
-- **1-Click multi-platform playlist migration**: Direct import and resolution of public playlists from Spotify, Apple Music, Deezer, YouTube Music, and SoundCloud
-- **Material Design 3 UI**: Dynamic color extraction from album artwork, deep UI theming, responsive layout presets, and an integrated CSS editor
-- **Hardware-Accelerated Visuals**: Canvas and WebGL visualizers including real-time frequency analyzers, an interactive squiggly progress scrubber, and synchronized karaoke lyrics.
-- **Discord Rich Presence**: Real-time playback status reporting track metadata, artist info, and elapsed time to Discord.
-- **Zero Telemetry**: No tracking identifiers, analytics pings, or background data collection.
-- **Fullscreen mode** with fancy lyrics animation.
-- **Albums** - see all of your favorite artist albums.
-- **Customization** - built in theme editor, configure everything, and a CSS editor, with animated backgrounds and interface opacity sliders.
-- **Plugins** - built-in plugin feature where you can add a plugin to edit how Riff works with something or add a new function.
-## Built-in Audio Suite
+- **Obsidian Premium UI**: an edge-to-edge, pitch-black three-column layout with violet and indigo accents, hairline borders, and controls that only appear when you hover.
+- **osu!-style graceful exit**: close the app and the screen fades to black, the logo glows in, and the song winds down like a record stopping (speed and pitch sink together while the volume fades) before Soulleak quits.
+- **Discord Rich Presence**: your status shows the song, the artist, any active effects (like "Slowed + reverb"), and the Soulleak logo.
+- **Interactive seek bar**: a violet scrubber with buffered progress, a glowing knob, a hover time preview, and arrow-key seeking.
+- **Floating glass queue**: a Spotify-style "Up Next" flyout on the playbar. Queue or unqueue songs from any row or right-click menu; queued songs play next, even in shuffle.
+- **7-tier listening ranks**: climb from **Spawn** to **True Larper** on real listening time, and unlock badges like **Hyperfixated** and **Terminally Online**.
+- **Gaming mini-player**: a borderless, always-on-top overlay with cover art, transport, repeat, a seek bar and volume. Toggle it with **Ctrl+Alt+I**; drag it and it snaps to the nearest corner.
+- **Immersive fullscreen**: big cover art, a live beat wave, and synced lyrics with your choice of font and color, plus a matching ambient glow.
+- **Soul Search**: type a mood ("late night drive", "studying", "ranked grind") and get the most-played community playlists for it from YouTube, SoundCloud, and Spotify.
+- **Stall detector**: if a song hangs for 10 seconds, Soulleak offers to skip it, retry it, or reload the player.
+- **Everything from Riff**: local library playback, synced lyrics, playlist import from Spotify / Apple Music / Deezer, downloads, themes, plugins, and a custom CSS editor.
 
-Riff includes an integrated audio engineering toolkit accessible directly within the player interface:
+## Audio Suite
 
-### Visual Audio Editor
-- **Lossless Audio Trimming**: Define start and end boundaries to trim tracks without transcoding loss.
-- **Region Extraction**: Select and isolate specific audio segments to save as standalone files.
-- **Non-Destructive Processing**: Edit operations produce independent files while preserving original source media untouched.
+### One-click presets
+- **Slowed + Reverb**: drops speed and pitch together and opens up the room.
+- **Nightcore**: faster and higher, the way it's supposed to be.
+- **8D Audio**: the song orbits around your head (HRTF panning driven by a slow LFO). Best on headphones.
+- Apply any preset to a single song straight from the row's hover menu; active effects show as tags under the song title.
 
-### 10-Band Parametric Equalizer
-- Dedicated frequency sliders covering 32 Hz through 16 kHz with pre-configured acoustic profiles (Bass Boost, Vocal Clarity, Electronic, Flat, Rock).
-- Per-channel gain adjustments with real-time Web Audio API signal processing.
+### Playback
+- **3-second gapless crossfade** between tracks by default (adjustable in settings).
+- **Repeat this song** with a glowing violet toggle, on the playbar and in the mini-player.
+- 10-band and 3-band equalizer, pitch, speed, reverb, echo, and distortion, all real time through the Web Audio API.
 
-### Real-Time DSP Effects Chain
-- **Tempo Control**: Dynamically speed up or slow down playback rate without altering pitch.
-- **Pitch Shifting**: Independent semitone pitch adjustment for rehearsal and tuning.
-- **Reverb & Spatial Effects**: Algorithmic convolution and room size simulation for spatial enhancement.
-- **Distortion / Overdrive**: Adjustable wave-shaping saturation and drive harmonics.
+## Obsidian Premium UI
 
-### Offline Library & Download Pipeline
-- Download streams from YouTube Music, YouTube, and SoundCloud directly into local disk storage (MP3, FLAC, Opus, WAV).
-- Automatic ID3 and metadata tagging, including high-resolution cover art embedding.
-- Complete offline availability with full playlist compilation and search indexing.
+- **Sidebar**: Home, Soul Search, a "How do you feel tonight?" mood box, your library, and your current rank.
+- **Song rows**: favorite, queue, effects, and download controls appear on hover; the playing or selected song gets a glowing violet outline.
+- **Playbar**: a full-width frosted-glass console with cover art, effect tags, the seek bar, and buttons for fullscreen, Up Next, and the mini-player.
+- **Up Next**: a floating glass panel threading "Now playing", "Queued by you", and "Next from…" on a glowing rail. Click to jump, hover to remove, or clear your queue in one go.
+- **Fullscreen lyrics**: a discreet style pill swaps between five typefaces and lets you pick any lyric color; the background glows in the same color and pulses with the beat.
 
-## Material Design 3 Expressive UI
+## Listening Ranks & Badges
 
-Riff implements the Material Design 3 (M3 Expressive) specification:
+Every second of real playback counts (paused or muted time doesn't). Stats are stored locally in IndexedDB, and **Settings → Badges** shows your exact listening time, what each rank and badge needs, and how long until the next unlock.
 
-- **Dynamic Color Extraction**: Generates responsive UI tonal palettes on the fly based on the dominant and secondary hues of active album art.
-- **Deep UI Customization**: Configurable banner backdrops, mesh gradients, blur filters, and typography controls.
-- **Integrated CSS Editor**: Built-in developer console allowing direct CSS overrides and custom style injection to personalize every aspect of the interface.
-- **Optimized Layout Modes**: Compact mini-player layout, expanded desktop view, and fullscreen TV / Karaoke mode with synchronized lyrics rendering.
+| Rank | Title | Listening time |
+|:---:|---|---|
+| 1 | **Spawn** | 0 h |
+| 2 | **Wanderer** | 0.5 h |
+| 3 | **Aux Owner** | 1.5 h |
+| 4 | **Gatekeeper** | 3.5 h |
+| 5 | **Scrobbler** | 7 h |
+| 6 | **Soul Leaker** | 24 h |
+| 7 | **True Larper** | 50 h |
 
-## Multi-Platform Playlist Migration
+Each rank has its own emblem that grows more ornate as you climb: wings at Scrobbler, a crown at Soul Leaker, and sparkles at True Larper.
 
-Migrate existing music libraries between platforms in a single operation:
+| Badge | How to unlock |
+|---|---|
+| **Parasocial** | 10 hours on a single artist |
+| **Hyperfixated** | 2 hours looping a single song |
+| **Terminally Online** | 100 hours of total listening |
 
-- Import public playlist URLs from **Spotify** (including playlists with 100+ tracks via automated pagination).
-- Import public playlists from **Deezer**, and public playlists and albums from **Apple Music**, **SoundCloud**, and **YouTube / YouTube Music**.
-- Platform-aware search resolution: matches imported track metadata against the selected audio provider to construct immediate local playlists.
+## Discord Rich Presence
 
-## Synchronized Lyrics Engine
-
-- Automatic multi-provider lyrics lookup matching artist and title metadata.
-- Native support for synchronized LRC files, plain text lyrics, and dynamic online timestamp alignment.
-- Inline time-offset adjustments to manually synchronize lyrics with live streams.
-- Multi-language translation support directly inside the lyrics panel.
+While a song plays, your Discord status shows **Listening to Soulleak** with the track, the artist, elapsed time, the cover art, and the Soulleak logo. Active audio effects ride along, e.g. `Shakira · Slowed + reverb`, and update the moment you change them.
 
 ## Download and install
 
-Pre-built binaries are available on the [Releases page](https://github.com/rootscripts/riff/releases).
+Download the latest Windows installer from the [Releases page](https://github.com/AliHayani/soulleak/releases) and run `soulleak-<version>-win-x64.exe`. The installer lets you choose where to install, and uninstalling doesn't delete your data.
 
-Standard releases include all necessary dependencies (bundled yt-dlp and ffmpeg binaries). No secondary runtime configuration is required on Windows or Linux.
-
-On Windows, the installer lets you choose the installation directory. Uninstalling Riff does not delete your app data.
-
-### macOS
-
-macOS support is currently experimental and compiled via continuous integration.
-
-1. Download the appropriate image:
-   - `Riff-<version>-mac-arm64.dmg` for Apple Silicon (M1 / M2 / M3 / M4)
-   - `Riff-<version>-mac-x64.dmg` for Intel-based hardware
-2. Open the disk image and drag Riff to your `Applications` directory.
-3. Riff is ad-hoc signed but not notarized, so the first launch is blocked. Right-click `Riff.app` in `Applications`, select **Open**, and confirm the prompt. On macOS 15 and later, open it once, then go to **System Settings → Privacy & Security** and click **Open Anyway**.
-4. If macOS still flags the bundle as damaged (older releases), execute the following command in Terminal:
-   ```bash
-   xattr -cr /Applications/Riff.app
-   ```
-   If a quarantine warning occurs when mounting the `.dmg` itself, run:
-   ```bash
-   xattr -d -r com.apple.quarantine /path/to/Riff.dmg
-   ```
-5. Riff downloads yt-dlp on first launch. Installing the tools with Homebrew is recommended, especially on Apple Silicon, where the ffmpeg build Riff downloads needs Rosetta (Riff finds Homebrew paths even when opened from Finder or the Dock):
-   ```bash
-   brew install yt-dlp ffmpeg
-   ```
-   Streaming works without ffmpeg; it is only needed for downloads and the audio editor.
-
-macOS application data and local indexes are stored in `~/Library/Application Support/Riff`.
+> [!TIP]
+> The installer isn't code-signed yet, so Windows SmartScreen may show "Windows protected your PC" on first launch. Click **More info → Run anyway**.
 
 ## Build from source
 
 Requires Node.js 18 or newer and npm.
 
 ```bash
-git clone https://github.com/rootscripts/riff.git
-cd riff
+git clone https://github.com/AliHayani/soulleak.git
+cd soulleak
+git checkout soulleak
 npm install
 npm start        # run the dev version
-npm run dist     # make a production build
+npm run dist     # build the installer into dist/
 ```
-
-The exact build output depends on the current project configuration.
-
-## Memory usage
-
-Riff (single Electron renderer and server process) typically utilizes approximately **180 MB of RAM** during steady-state playback. Actual footprint varies based on active visualizer modes, library size, and OS window compositing.
-
-### Memory usage is only classified as a leak when sustained footprint exceeds 600 MB.
-
-## Mobile versions
-
-There is no official Riff client for Android or iOS. Third-party community forks are documented below:
-### https://rootless.shit.vc/fork
-Additional mobile implementations may be reviewed in future releases.
 
 ## FAQ
 
-**Is Riff free?**
-Yes. Riff is free software published under the permissive MIT license. There are no subscriptions, paywalls, or premium tiers.
+**Is Soulleak free?**
+Yes. Like Riff, it's free software under the MIT license, with no subscriptions or paywalls.
 
-**Does Riff display advertisements?**
-No. Streams from YouTube Music, YouTube, and SoundCloud are resolved directly and play without advertisements.
+**Does it show ads or need an account?**
+No ads and no account. Optional Spotify and Google sign-ins only unlock imports and Spotify results in Soul Search.
 
-**Is an account or sign-in required?**
-No account is required for playback or public playlist imports. Optional Google sign-in lets you import your own YouTube likes and playlists; Riff uses Google's OAuth flow and YouTube Data API for that feature. Telemetry and analytic tracking are strictly omitted.
+**What's the mini-player shortcut?**
+**Ctrl+Alt+I** shows or hides it from anywhere, even mid-game. It shows without stealing focus, so your game keeps your keyboard.
+
+**Does closing really slow the song down?**
+Yes. Closing (X, Alt+F4, or Quit from the tray) takes two seconds: the screen goes black, the logo comes in, and the music winds down like a stopping record.
+
+**Where are my ranks and stats stored?**
+Locally, in the app's IndexedDB on your machine. Nothing is uploaded.
 
 **Which operating systems are supported?**
-Windows 10/11, modern Linux distributions, and macOS (experimental).
+Soulleak is built and tested on Windows 10/11. The Linux and macOS build targets are inherited from Riff but haven't been tested for Soulleak.
 
-**Can Riff function as an offline local music player?**
-Yes. Riff natively indexes local audio files (including lossless FLAC, WAV, MP3, and OGG), reads standard metadata tags and embedded artwork, and manages playlists without altering underlying disk files.
+## Credits
 
-**Can I use Riff entirely offline?**
-Yes. Downloaded tracks, saved audio segments, and indexed local libraries function without an internet connection.
-
-**How does playlist migration work?**
-Paste any public Spotify, Apple Music, Deezer, YouTube Music, or SoundCloud playlist link. Riff extracts track titles and artists, batches requests to resolve streams on your active platform, and saves the result as an editable local playlist.
-
-**Does Riff support synchronized lyrics?**
-Yes. Riff supports online synchronized lyrics, local LRC files, manual timing adjustments, and real-time synchronized karaoke display.
-
-**Does Riff integrate with Discord?**
-Yes. Native Discord Rich Presence displays the currently playing track title, artist, elapsed time, and platform indicator.
-
-**Are there official mobile builds?**
-No official mobile releases exist. See [Mobile versions](#mobile-versions) for community-maintained forks.
-
-## Contributing
-
-Pull requests are welcome. Please verify all changes locally, ensure code passes syntax validation (`node --check`), and confirm stability before submitting contributions. Untested pull requests or changes introducing regressions will not be merged.
-
-## Support
-
-You can support ongoing development via [Ko-fi](https://ko-fi.com/rootlesszen). Repository stars on GitHub are also appreciated.
+Soulleak is built on [Riff](https://github.com/rootscripts/riff) by rootscripts. Soulleak's interface, presets, mini-player, ranks, badges, and integrations are by **Ali Hayani Mounir**.
 
 ## Disclaimer
 
-Riff is developed for educational purposes and personal media management. Users are responsible for adhering to the terms of service of third-party platforms and applicable local copyright regulations.
+Soulleak is developed for educational purposes and personal media management. Users are responsible for following the terms of service of third-party platforms and applicable copyright law.
 
 ## License
 
-[MIT](LICENSE)
+[MIT](LICENSE). The original Riff copyright notice is preserved.
 
 ---
 
-<sub>Keywords: free music player, YouTube Music desktop app, SoundCloud desktop player, ad-free music player, Material Design 3, M3 Expressive, visual audio editor, lossless audio trimmer, 10-band equalizer, DSP effects, tempo changer, pitch shift, FLAC player, WAV playback, Spotify playlist import, Apple Music playlist migration, Electron music player, Vanilla JS, WebGL audio visualizer, Discord Rich Presence, open source music player, MIT license, telemetry-free desktop player.</sub>
+<sub>Keywords: gaming music player, desktop music client, always-on-top mini player, osu! exit animation, slowed and reverb, nightcore, 8D audio, YouTube Music desktop app, SoundCloud desktop player, Discord Rich Presence, listening stats, music gamification, Electron music player, vanilla JS.</sub>
