@@ -1,7 +1,7 @@
 
 const RPC = require('discord-rpc');
 
-const CLIENT_ID = '1520100510877749358';
+const CLIENT_ID = '1566637507494289529';
 const RECONNECT_DELAY_MS = 15000;
 // Art asset key for the Soulleak logo; upload an image under this name in the Discord app's Rich Presence art.
 const LOGO_ASSET = 'soulleak';
