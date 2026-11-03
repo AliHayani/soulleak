@@ -106,11 +106,12 @@ function writeStartupConfig(patch) {
   } catch (e) { return false; }
 }
 const APP_VERSION = (() => { try { return require('../../package.json').version || '0'; } catch (e) { return '0'; } })();
+// Setup runs once per install, not once per version: any finished-setup marker counts, so updates open straight
+// into the app with the user's theme and settings untouched.
 function tutorialDone() {
   for (const file of [TUTORIAL_MARKER, TUTORIAL_MARKER_FALLBACK]) {
     try {
-      if (!fs.existsSync(file)) continue;
-      if (fs.readFileSync(file, 'utf8').trim() === APP_VERSION) return true;
+      if (fs.existsSync(file) && fs.readFileSync(file, 'utf8').trim()) return true;
     } catch (e) {}
   }
   return false;
