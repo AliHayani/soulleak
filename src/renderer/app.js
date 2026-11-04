@@ -4448,6 +4448,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     applyTrackRenames(track);
     if (typeof queueList === "number") { startIndex = queueList; queueList = state.queue; }
     if (!track || !el.nativeAudio) return;
+    if (window.SoulleakLT) window.SoulleakLT.notify('track', track);
     const selectedQuality = localStorage.getItem('riff_audio_quality') || 'medium';
     if (track._preloadedStreamQuality && track._preloadedStreamQuality !== selectedQuality) {
       delete track._preloadedStreamUrl;
@@ -8022,6 +8023,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     sendDiscordRpcUpdate(state.currentTrack, false);
     sendStateToServer();
     updateMediaSession();
+    if (window.SoulleakLT) window.SoulleakLT.notify('play');
 
     const audio = el.nativeAudio;
     if (isAppClosing || !audio || audio.paused) {
@@ -8125,10 +8127,32 @@ document.addEventListener('DOMContentLoaded', async () => {
     sendDiscordRpcUpdate(state.currentTrack, true);
     sendStateToServer();
     updateMediaSession();
+    if (window.SoulleakLT) window.SoulleakLT.notify('play');
   }
 
   window.pauseSmooth = pauseSmooth;
   window.playSmooth = playSmooth;
+
+  // Listen Together (listen-together.js) drives playback here through this adapter.
+  if (window.SoulleakLT) {
+    window.SoulleakLT.attach({
+      audio: () => el.nativeAudio,
+      getTrack: () => state.currentTrack,
+      isPlaying: () => !!state.isPlaying,
+      isLoading: () => !!state.isLoadingTrack,
+      // A friend's song slots in right after the current one, so your own Up Next still plays after it.
+      playTrack: (track) => {
+        if (Array.isArray(state.queue) && !state.queue.some((q) => isSameTrack(q, track))) {
+          const at = Math.min(state.queue.length, Math.max(0, (state.queueIndex | 0) + 1));
+          state.queue.splice(at, 0, track);
+        }
+        return playTrack(track);
+      },
+      play: () => playSmooth(),
+      pause: () => pauseSmooth(),
+      toast: (msg, type) => showToast(msg, type),
+    });
+  }
 
   async function startWaveIfIdle() {
     if (state.currentTrack) return false;
@@ -8306,6 +8330,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   async function playNext() {
     if (syncState && syncState.active) return;
+    // In a Listen Together room as a guest, the host's app picks the next song when one ends.
+    if (state._isNaturalEnding && window.SoulleakLT && window.SoulleakLT.holdAutoplay()) {
+      try { if (el.nativeAudio && !el.nativeAudio.paused) el.nativeAudio.pause(); } catch (_) {}
+      return;
+    }
     if (state.queue.length === 0) return;
 
     if (!state._isNaturalEnding && state.myWaveActive && state.currentTrack) {
@@ -8857,7 +8886,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const dur = getReliableTrackDuration();
 
       const X = getCrossfadeSeconds();
-      if (X > 0 && !crossfadeTriggered && !state.isRepeat && dur > Math.max(X * 2, 20) && cur >= dur - X && (!audioEngine || !audioEngine.isLiveStream(el.nativeAudio))) {
+      if (X > 0 && !crossfadeTriggered && !state.isRepeat && !(window.SoulleakLT && window.SoulleakLT.holdAutoplay()) && dur > Math.max(X * 2, 20) && cur >= dur - X && (!audioEngine || !audioEngine.isLiveStream(el.nativeAudio))) {
         crossfadeTriggered = true;
         crossfadeFadeInPending = true;
         if (startCrossfadeTailFromCurrent(X)) {
@@ -19247,6 +19276,7 @@ function bindCoverHoldZoom(wrapEl) {
       if (document.querySelector('.ob-exit')) return;
       flushStats();
       closeStallPrompt();
+      if (window.SoulleakLT) window.SoulleakLT.leave(true);
       windDownAudio(total);
       const veil = document.createElement('div');
       veil.className = 'ob-exit';

@@ -2941,6 +2941,11 @@
         <span class="ob-upnext-count" id="ob-upnext-count" hidden>0</span>
       </button>
 
+      <button class="btn-icon-pill ob-only ob-upnext-btn ob-lt-btn-pill" id="btn-ob-together" title="Listen Together" aria-label="Listen Together" aria-expanded="false" aria-controls="ob-lt">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 14v-2a9 9 0 0 1 18 0v2"/><rect x="2" y="14" width="4" height="6" rx="1.5"/><rect x="18" y="14" width="4" height="6" rx="1.5"/><path d="M9.5 16.5a3.5 3.5 0 0 0 5 0"/></svg>
+        <span class="ob-upnext-count" id="ob-lt-count" hidden>0</span>
+      </button>
+
       <button class="btn-icon-pill ob-only" id="btn-ob-miniplayer" title="Gaming mini-player (Ctrl+Alt+I)" aria-label="Toggle gaming mini-player" aria-pressed="false">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><rect x="12" y="12" width="7" height="5" rx="1" fill="currentColor" stroke="none"/></svg>
       </button>
@@ -2983,6 +2988,19 @@
       </button>
     </div>
     <div class="ob-upnext-body" id="ob-upnext-body"></div>
+  </aside>
+
+  <aside class="ob-upnext ob-lt" id="ob-lt" aria-label="Listen Together" aria-hidden="true">
+    <div class="ob-upnext-head">
+      <div>
+        <span class="ob-upnext-kicker">Room</span>
+        <h3>Listen Together</h3>
+      </div>
+      <button type="button" class="ob-upnext-close" id="ob-lt-close" aria-label="Close Listen Together">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="ob-lt-body" id="ob-lt-body"></div>
   </aside>
 
   <audio id="native-audio" crossorigin="anonymous" preload="auto"></audio>
@@ -4454,6 +4472,8 @@
   <script src="shapes.js"></script>
   <script src="lyrics-rtl.js"></script>
   <script src="track-sort.js"></script>
+  <script src="../../assets/peerjs.min.js"></script>
+  <script src="listen-together.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
