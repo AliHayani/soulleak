@@ -4471,8 +4471,49 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
   window.closeSbInlinePresets = closeSbInlinePresets;
 
+  // Stream links from SoundCloud ("expires=") and YouTube ("expire=") are signed and stop working after a few hours.
+  // Songs keep their last link in history and playlists, so an old one must not be reused: HLS streams just sit on
+  // the loading screen with a dead link (that was the "song won't start until I drag the seek bar" bug).
+  function isStreamUrlExpired(url) {
+    // DRM-encrypted SoundCloud links (/cbcs/, /ctr/) never play here either; treat a saved one as dead.
+    if (/\/(cbcs|ctr|cenc)\//i.test(decodeURIComponent(String(url || '')))) return true;
+    try {
+      let raw = String(url || '');
+      const proxied = /\/api\/audio-proxy\?/.test(raw) && new URL(raw).searchParams.get('url');
+      if (proxied) raw = proxied;
+      const u = new URL(raw);
+      const v = u.searchParams.get('expires') || u.searchParams.get('expire');
+      if (!v) return false;
+      const ts = Number(v);
+      return Number.isFinite(ts) && ts * 1000 < Date.now() + 60 * 1000;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  // An HLS link that fails to load (expired, revoked, region locked): fetch a fresh one and play again, at most once
+  // every 30 s per song, instead of hls.js retrying the dead link forever on the loading screen.
+  function refreshDeadHlsLink(track) {
+    const now = Date.now();
+    if (!track || (track._slLinkRefreshAt && now - track._slLinkRefreshAt < 30000)) return false;
+    track._slLinkRefreshAt = now;
+    delete track._preloadedStreamUrl;
+    delete track._preloadedStreamQuality;
+    track._forceFreshStream = true;
+    if (hlsInstance) {
+      try { hlsInstance.destroy(); } catch (_) {}
+      hlsInstance = null;
+    }
+    playTrack(track);
+    return true;
+  }
+
   async function playTrack(track, queueList = null, startIndex = -1, context = null) {
     if (track && !track._errorRetryStage) track._errorRetryStage = 0;
+    if (track && track._preloadedStreamUrl && isStreamUrlExpired(track._preloadedStreamUrl)) {
+      delete track._preloadedStreamUrl;
+      delete track._preloadedStreamQuality;
+    }
     if (track && track.artist) track.artist = stripYoutubeTopic(track.artist);
     if (track && track.platform !== 'soundcloud' && /^(?:sp_|dz_|it_|ym_|cand_)/i.test(String(track.id || ''))) {
       delete track._preloadedStreamUrl;
@@ -4673,8 +4714,10 @@ document.addEventListener('DOMContentLoaded', async () => {
           hlsInstance = new Hls({ enableWorker: true, lowLatencyMode: true, maxBufferLength: 30, maxMaxBufferLength: 60, maxBufferSize: 30 * 1000 * 1000 });
           hlsInstance.on(Hls.Events.ERROR, (_, errData) => {
             if (errData && errData.fatal) {
-              if (errData.type === Hls.ErrorTypes.NETWORK_ERROR) hlsInstance.startLoad();
-              else if (errData.type === Hls.ErrorTypes.MEDIA_ERROR) hlsInstance.recoverMediaError();
+              if (errData.type === Hls.ErrorTypes.NETWORK_ERROR) {
+                if (currentToken === state.loadToken && refreshDeadHlsLink(track)) return;
+                hlsInstance.startLoad();
+              } else if (errData.type === Hls.ErrorTypes.MEDIA_ERROR) hlsInstance.recoverMediaError();
             }
           });
           hlsInstance.loadSource(track._preloadedStreamUrl);
@@ -4698,7 +4741,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
       const qQuality = encodeURIComponent(localStorage.getItem('riff_audio_quality') || 'medium');
       const qSearch = encodeURIComponent(track.searchQuery || ((track.artist ? track.artist + ' - ' : '') + track.title));
-      const streamInfoUrl = `http://127.0.0.1:${state.serverPort}/api/stream-info?url=${encodeURIComponent(resolvedUrl || '')}&id=${encodeURIComponent(resolvedId || '')}&platform=${(state.platform === 'soundcloud' && (!track.url || !track.url.includes('youtube.com'))) ? 'soundcloud' : (track.platform || state.platform || 'ytmusic')}&title=${encodeURIComponent(track.title || '')}&artist=${encodeURIComponent(track.artist || '')}&duration=${encodeURIComponent(track.duration || 0)}&thumbnail=${encodeURIComponent(track.thumbnail || '')}&quality=${qQuality}&q=${qSearch}`;
+      const streamInfoUrl = `http://127.0.0.1:${state.serverPort}/api/stream-info?url=${encodeURIComponent(resolvedUrl || '')}&id=${encodeURIComponent(resolvedId || '')}&platform=${(state.platform === 'soundcloud' && (!track.url || !track.url.includes('youtube.com'))) ? 'soundcloud' : (track.platform || state.platform || 'ytmusic')}&title=${encodeURIComponent(track.title || '')}&artist=${encodeURIComponent(track.artist || '')}&duration=${encodeURIComponent(track.duration || 0)}&thumbnail=${encodeURIComponent(track.thumbnail || '')}&quality=${qQuality}&q=${qSearch}${track._forceFreshStream ? '&forceYtDlp=1' : ''}`;
+      // A forced fresh lookup (after a dead link) skips the server's cached link once.
+      delete track._forceFreshStream;
       let res;
       try {
         res = await fetch(streamInfoUrl, { signal });
@@ -4743,8 +4788,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         hlsInstance = new Hls({ enableWorker: true, lowLatencyMode: true, maxBufferLength: 30, maxMaxBufferLength: 60, maxBufferSize: 30 * 1000 * 1000 });
         hlsInstance.on(Hls.Events.ERROR, (_, errData) => {
           if (errData && errData.fatal) {
-            if (errData.type === Hls.ErrorTypes.NETWORK_ERROR) hlsInstance.startLoad();
-            else if (errData.type === Hls.ErrorTypes.MEDIA_ERROR) hlsInstance.recoverMediaError();
+            if (errData.type === Hls.ErrorTypes.NETWORK_ERROR) {
+              if (currentToken === state.loadToken && refreshDeadHlsLink(track)) return;
+              hlsInstance.startLoad();
+            } else if (errData.type === Hls.ErrorTypes.MEDIA_ERROR) hlsInstance.recoverMediaError();
           }
         });
         hlsInstance.loadSource(data.streamUrl);

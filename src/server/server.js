@@ -315,6 +315,23 @@ function saveLibraryIndex() {
 const searchCache = new Map();
 const streamUrlCache = new Map();
 const streamCache = streamUrlCache;
+
+// Signed stream links carry their own expiry (SoundCloud "expires=", YouTube "expire=", in seconds). A cached link
+// past it (or within a minute of it) is dead even if the cache entry itself is younger than its 2 hour limit.
+function streamLinkExpired(link) {
+  try {
+    let raw = String(link || '');
+    const inner = /\/api\/audio-proxy\?/.test(raw) ? new URL(raw).searchParams.get('url') : null;
+    if (inner) raw = inner;
+    const u = new URL(raw);
+    const v = u.searchParams.get('expires') || u.searchParams.get('expire');
+    if (!v) return false;
+    const ts = Number(v);
+    return Number.isFinite(ts) && ts * 1000 < Date.now() + 60 * 1000;
+  } catch (_) {
+    return false;
+  }
+}
 const urlCache = streamUrlCache;
 const streamInfoInflight = new Map();
 const lyricsCache = new Map();
@@ -850,9 +867,13 @@ async function fetchDirectYoutubeStreamServer(videoId, quality = 'medium') {
 
 async function resolveScTranscodingServer(trackObj, cid) {
   if (!trackObj || !trackObj.media || !Array.isArray(trackObj.media.transcodings)) return null;
-  const list = trackObj.media.transcodings.filter(t => !t.snipped);
+  // DRM-encrypted formats (protocol "ctr-/cbc-encrypted-hls", "/cbcs/" links) can't be decrypted here: the player
+  // gets the playlist but every segment fails, so the song never starts. Skip them; with no plain format left this
+  // returns null and the caller tries another upload of the song (or another source) instead.
+  const isEncrypted = (t) => /encrypted/i.test(`${(t.format && t.format.protocol) || ''} ${(t.format && t.format.mime_type) || ''} ${t.preset || ''}`) || /\/(cbcs|ctr|cenc)\//i.test(t.url || '');
+  const list = trackObj.media.transcodings.filter(t => !t.snipped && !isEncrypted(t));
   const prog = list.find(t => t.format && t.format.protocol === 'progressive');
-  const hls = list.find(t => t.format && t.format.protocol === 'hls' && !/encrypted/i.test(t.format.mime_type || ''));
+  const hls = list.find(t => t.format && t.format.protocol === 'hls');
   const chosen = prog || hls || list[0];
   if (!chosen || !chosen.url || chosen.snipped === true) return null;
   const sep = chosen.url.includes('?') ? '&' : '?';
@@ -862,6 +883,7 @@ async function resolveScTranscodingServer(trackObj, cid) {
   const j = await res.json();
   const u = (j && j.url) ? j.url : null;
   if (!u || u.includes('/preview/') || u.includes('cf-preview-media')) return null;
+  if (/\/(cbcs|ctr|cenc)\//i.test(u)) return null;
   return u;
 }
 
@@ -2907,7 +2929,7 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
     const cached = (cacheKey && streamUrlCache.get(cacheKey)) ||
       (cleanId ? streamUrlCache.get(cleanId + '_' + quality) : null) ||
       (metaStreamKey ? streamUrlCache.get(metaStreamKey) : null);
-    if (cached && (Date.now() - cached.timestamp < 7200000)) {
+    if (cached && (Date.now() - cached.timestamp < 7200000) && !streamLinkExpired(cached.data && cached.data.streamUrl)) {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       return res.end(JSON.stringify(cached.data));
     }
