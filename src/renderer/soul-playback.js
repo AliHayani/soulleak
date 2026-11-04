@@ -200,6 +200,7 @@
     if (ticks % FLUSH_EVERY_S === 0) {
       flush();
       if (isOpen() && viewMonth === month && !menuOpen) render();
+      if (homeVisible()) renderHero();
     }
   }
 
@@ -255,6 +256,7 @@
     }
     seedFromHistory();
     if (isOpen()) render();
+    renderHero();
   }
 
   // ---------- ranking ----------
@@ -469,10 +471,110 @@
         r.addEventListener('click', onClick);
         document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && menuOpen) { menuOpen = false; render(); } });
       }
+      const hero = heroRoot();
+      if (hero && !hero._slWired) {
+        hero._slWired = true;
+        hero.addEventListener('click', onHeroClick);
+        // Keep the Resume card's Play / Pause state in step with the player.
+        const audio = document.getElementById('native-audio');
+        if (audio) ['play', 'pause', 'loadeddata'].forEach((ev) => audio.addEventListener(ev, () => { if (homeVisible()) renderHero(); }));
+      }
     };
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', wire, { once: true });
     else wire();
     window.addEventListener('beforeunload', flush);
+  }
+
+  // ---------- Home hero: rank, this month's time, and a one-click resume ----------
+
+  function heroRoot() { return document.getElementById('sl-hero'); }
+  function homeVisible() {
+    const v = document.getElementById('view-discover');
+    return !!(v && v.classList.contains('active'));
+  }
+
+  function greeting() {
+    const h = new Date().getHours();
+    if (h < 5) return 'Up late';
+    if (h < 12) return 'Good morning';
+    if (h < 18) return 'Good afternoon';
+    return 'Good evening';
+  }
+
+  function resumeTrack() {
+    const cur = app && app.current ? app.current() : null;
+    if (cur) return { track: cur, isCurrent: true };
+    const h = (app && app.history && app.history()) || [];
+    return h.length ? { track: h[0], isCurrent: false } : null;
+  }
+
+  const ICON_PAUSE = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6.5" y="5" width="4" height="14" rx="1.2" fill="currentColor"/><rect x="13.5" y="5" width="4" height="14" rx="1.2" fill="currentColor"/></svg>';
+
+  function renderHero() {
+    const hero = heroRoot();
+    if (!hero || !app) return;
+    // The rank comes from the sidebar card, which the rank system keeps up to date.
+    const text = (id) => { const e = document.getElementById(id); return e ? e.textContent.trim() : ''; };
+    const fillEl = document.getElementById('ob-level-fill');
+    const fill = fillEl && fillEl.style.width ? fillEl.style.width : '0%';
+    const emblemEl = document.getElementById('ob-level-emblem');
+    // The copy gets its own gradient ids: the sidebar card can be hidden (icon rail), and gradients defined
+    // inside a hidden element don't paint.
+    const emblem = emblemEl ? emblemEl.innerHTML.replace(/(id="|url\(#)([^")]+)/g, '$1$2-hero') : '';
+    const month = months.get(monthKey(new Date()));
+    const secs = month ? month.totalSeconds : 0;
+
+    const r = resumeTrack();
+    let resume = '';
+    if (r) {
+      const t = r.track;
+      const playing = r.isCurrent && app.isPlaying && app.isPlaying();
+      const cover = [t.thumbnail, t.cover].find((u) => typeof u === 'string' && /^https?:/i.test(u)) || '';
+      const kind = playing ? 'Now playing' : (r.isCurrent ? 'Paused' : 'Resume last session');
+      resume = `<button type="button" class="sl-resume${playing ? ' is-playing' : ''}" data-sl-hero="resume" title="${playing ? 'Pause' : 'Play'} ${esc(t.title || '')}">
+          ${art(cover, 'sl-resume-art')}
+          <span class="sl-resume-text">
+            <span class="sl-resume-kind">${kind}</span>
+            <span class="sl-resume-title">${esc(t.title || 'Untitled')}</span>
+            <span class="sl-resume-sub">${esc(t.artist || '')}</span>
+          </span>
+          <span class="sl-resume-btn">${playing ? ICON_PAUSE : ICON_PLAY}</span>
+        </button>`;
+    }
+
+    hero.innerHTML = `<div class="sl-hero-main">
+        <h1 class="sl-hero-title">${greeting()}</h1>
+        <div class="sl-hero-stats">
+          <button type="button" class="sl-hero-rank" data-sl-hero="rank" title="Open your ranks and badges">
+            <span class="sl-hero-emblem" aria-hidden="true">${emblem}</span>
+            <span class="sl-hero-rank-text">
+              <span class="sl-hero-rank-name">${esc(text('ob-level-name') || 'Spawn')} <em>${esc(text('ob-level-tier'))}</em></span>
+              <span class="sl-hero-bar"><i style="width:${esc(fill)}"></i></span>
+              <span class="sl-hero-rank-sub">${esc(text('ob-level-sub'))}</span>
+            </span>
+          </button>
+          <button type="button" class="sl-hero-month" data-sl-hero="playback" title="Open Soul Playback">
+            <span class="sl-hero-big">${esc(fmtTime(secs))}</span>
+            <span class="sl-hero-rank-sub">listened in ${esc(monthLabel(monthKey(new Date()), false))}</span>
+          </button>
+        </div>
+      </div>
+      ${resume}`;
+    hero._slResume = r;
+  }
+
+  function onHeroClick(e) {
+    const b = e.target.closest('[data-sl-hero]');
+    if (!b || !app) return;
+    const act = b.dataset.slHero;
+    if (act === 'rank') document.getElementById('ob-level')?.click();
+    else if (act === 'playback') document.getElementById('nav-playback')?.click();
+    else if (act === 'resume') {
+      const r = heroRoot()._slResume;
+      if (!r) return;
+      if (r.isCurrent) app.togglePlay();
+      else app.playList([Object.assign({}, r.track)], 0);
+    }
   }
 
   window.SoulPlayback = {
@@ -482,6 +584,7 @@
     flush,
     open,
     render,
+    renderHero,
     // For a yearly recap later: monthly records and a sum over a year.
     months: () => new Map(months),
     year: yearBucket,

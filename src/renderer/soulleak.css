@@ -3115,3 +3115,760 @@ body.sidebar-expanded .sidebar-nav #nav-playback.active .nav-indicator { color: 
   .slpb-feature { grid-template-columns: minmax(0, 1fr); gap: 24px; }
   .slpb-lists { grid-template-columns: minmax(0, 1fr); gap: 30px; }
 }
+
+/* =====================================================================
+   Soulleak restyle: Electric Violet on pitch black, with the sidebar, main
+   view, lyrics panel and playbar floating as separate panels.
+   Dark theme only, so light themes and their accent colors keep working.
+   ===================================================================== */
+
+body.theme-dark {
+  --sl-violet: #7c3aed;
+  --sl-violet-hi: #8b5cf6;
+  --sl-black: #050508;
+  --sl-gap: 8px;
+  --sl-radius: 16px;
+  --sl-edge: rgba(139, 92, 246, 0.18);
+  --sl-pb-h: 96px;
+
+  /* Riff's theme engine makes a pastel primary (lightness 75%); Soulleak's is Electric Violet. */
+  --md-sys-color-primary: #8b5cf6;
+  --md-sys-color-on-primary: #ffffff;
+  --md-sys-color-primary-container: rgba(124, 58, 237, 0.22);
+  --md-sys-color-on-primary-container: #ddd6fe;
+
+  --md-sys-color-surface: #050508;
+  --md-sys-color-surface-dim: #050508;
+  --md-sys-color-surface-container-lowest: #050508;
+  --md-sys-color-surface-container-low: #08080d;
+  --md-sys-color-surface-container: #0c0b12;
+  --md-sys-color-surface-container-high: #111019;
+  --md-sys-color-surface-container-highest: #17151f;
+}
+
+/* Canvases (visualizer, wave) read the primary straight off <html>, where the theme engine writes it inline. */
+html:has(> body.theme-dark) {
+  --md-sys-color-primary: #8b5cf6 !important;
+  --md-sys-color-on-primary: #ffffff !important;
+}
+
+/* ---- Floating panels ----
+   styles.css lays the app out as: sidebar fixed on the left (top 0, bottom = playbar height), the content
+   column pushed right by --sidebar-w with height 100vh - 40px titlebar - 64px header - 96px playbar, and the
+   playbar fixed full width at the bottom. Every edge moves in by --sl-gap together, so nothing overlaps or
+   overflows. */
+
+body.theme-dark:not(.classic-sidebar):not(.mini) #sidebar {
+  top: var(--sl-gap) !important;
+  left: var(--sl-gap) !important;
+  bottom: calc(var(--sl-pb-h) + var(--sl-gap) * 2) !important;
+  width: calc(84px - var(--sl-gap) * 2) !important;
+  border: 1px solid var(--sl-edge) !important;
+  border-radius: var(--sl-radius) !important;
+  background: var(--sl-black) !important;
+}
+body.theme-dark.sidebar-expanded:not(.classic-sidebar):not(.mini) #sidebar {
+  width: calc(var(--sidebar-w, 296px) - var(--sl-gap) * 2) !important;
+}
+
+body.theme-dark:not(.classic-sidebar):not(.mini) .app-layout {
+  margin-bottom: calc(var(--sl-pb-h) + var(--sl-gap) * 2) !important;
+  height: calc(100vh - 104px - var(--sl-pb-h) - var(--sl-gap) * 2) !important;
+  max-height: calc(100vh - 104px - var(--sl-pb-h) - var(--sl-gap) * 2) !important;
+}
+body.theme-dark.hide-titlebar:not(.classic-sidebar):not(.mini) .app-layout {
+  height: calc(100vh - 64px - var(--sl-pb-h) - var(--sl-gap) * 2) !important;
+  max-height: calc(100vh - 64px - var(--sl-pb-h) - var(--sl-gap) * 2) !important;
+}
+
+body.theme-dark #main-content {
+  border: 1px solid var(--sl-edge);
+  border-radius: var(--sl-radius);
+}
+body.theme-dark:not(.cover-bg-on):not(.has-video-bg) #main-content { background-color: var(--sl-black); }
+
+body.theme-dark #right-panel {
+  border: 1px solid var(--sl-edge) !important;
+  border-radius: var(--sl-radius) !important;
+  background: var(--sl-black) !important;
+}
+
+body.theme-dark:not(.classic-sidebar):not(.mini) #playbar {
+  left: var(--sl-gap) !important;
+  right: var(--sl-gap) !important;
+  bottom: var(--sl-gap) !important;
+  width: auto !important;
+  border: 1px solid var(--sl-edge) !important;
+  border-radius: var(--sl-radius) !important;
+  background: rgba(5, 5, 8, 0.9) !important;
+  box-shadow: 0 16px 44px rgba(0, 0, 0, 0.55) !important;
+}
+
+/* Flyouts that sit above the playbar move up with it. */
+body.theme-dark .ob-upnext { bottom: calc(var(--sl-pb-h) + var(--sl-gap) * 2 + 10px); }
+
+/* ---- Riff leftovers, hidden (not removed: app.js still wires them up) ---- */
+#ob-mood-form,
+#btn-download-playlist,
+#btn-export-playlist { display: none !important; }
+
+/* ---- Play / pause: a compact Electric Violet squircle in every state ---- */
+body.theme-dark #playbar #btn-play-pause {
+  width: 48px !important;
+  min-width: 48px !important;
+  max-width: 48px !important;
+  height: 48px !important;
+  padding: 0 !important;
+  border-radius: 14px !important;
+  background: var(--sl-violet) !important;
+  background-image: none !important;
+  box-shadow: 0 6px 18px rgba(124, 58, 237, 0.35) !important;
+  transition: background-color 0.15s ease, transform 0.12s ease !important;
+}
+body.theme-dark #playbar #btn-play-pause:hover { background: var(--sl-violet-hi) !important; }
+body.theme-dark #playbar #btn-play-pause:active { transform: scale(0.95); }
+
+/* ---- Rank card: first thing in the sidebar ---- */
+body.theme-dark.sidebar-expanded #sidebar > .ob-level {
+  margin: 10px 10px 6px;
+  padding: 12px 12px 10px;
+  border: 1px solid var(--sl-edge);
+  border-radius: 12px;
+  background: rgba(139, 92, 246, 0.05);
+}
+body.theme-dark.sidebar-expanded #sidebar > .ob-level:hover { background: rgba(139, 92, 246, 0.09); }
+
+/* ---- Liked songs tile and Playlists / Albums tabs: dark glass ---- */
+/* Same look for the sidebar tile and the Home one; the ids match the earlier gradient rules' strength. */
+body.theme-dark #sidebar .sb-lib-cover.liked-grad,
+body.theme-dark #sp-home .sp-tile .sp-heart {
+  background: linear-gradient(150deg, rgba(139, 92, 246, 0.24), rgba(255, 255, 255, 0.02) 70%) !important;
+  border: 1px solid rgba(139, 92, 246, 0.32);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07);
+  backdrop-filter: blur(12px);
+  color: #c4b5fd !important;
+}
+body.theme-dark #sidebar .sb-lib-cover.liked-grad svg,
+body.theme-dark #sp-home .sp-tile .sp-heart svg { color: #c4b5fd; fill: currentColor; }
+
+body.theme-dark #sidebar-lib-chips {
+  display: flex;
+  gap: 2px;
+  margin: 4px 10px 8px !important;
+  padding: 3px !important;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.025);
+  backdrop-filter: blur(12px);
+}
+body.theme-dark #sidebar-lib-chips .sb-horiz-tab {
+  flex: 1;
+  height: 32px !important;
+  border-radius: 9px !important;
+  background: transparent !important;
+  color: var(--md-sys-color-on-surface-variant) !important;
+  font-size: 13px;
+  font-weight: 650;
+  box-shadow: none !important;
+}
+body.theme-dark #sidebar-lib-chips .sb-horiz-tab:hover { color: #fff !important; background: rgba(255, 255, 255, 0.04) !important; }
+body.theme-dark #sidebar-lib-chips .sb-horiz-tab.active {
+  background: rgba(139, 92, 246, 0.16) !important;
+  color: #fff !important;
+  box-shadow: inset 0 0 0 1px rgba(139, 92, 246, 0.32) !important;
+}
+body.theme-dark #sidebar-lib-chips .sb-horiz-tab::before,
+body.theme-dark #sidebar-lib-chips .sb-horiz-tab::after { display: none !important; }
+
+/* =====================================================================
+   Soulleak shell: one header row with the main tabs, a full-height library
+   drawer on the left, no right column unless Lyrics is on, and a floating
+   dock for the player. Dark theme, standard (non-classic, non-mini) layout.
+   ===================================================================== */
+
+body.theme-dark {
+  --sl-head-h: 60px;
+  --sl-pb-h: 84px;
+  --sl-dock-bottom: 12px;
+  /* Space the content column leaves for the dock. */
+  --sl-dock-space: calc(var(--sl-pb-h) + var(--sl-dock-bottom) + var(--sl-gap));
+}
+
+/* ---- Header: titlebar and search row become one row ---- */
+body.theme-dark:not(.classic-sidebar):not(.mini):not(.hide-titlebar) .titlebar {
+  height: var(--sl-head-h) !important;
+  min-height: var(--sl-head-h) !important;
+  align-items: center;
+}
+body.theme-dark .titlebar .titlebar-drag { flex: 1 1 auto; align-self: stretch; }
+body.theme-dark .titlebar .app-logo { display: none !important; }
+
+body.theme-dark:not(.classic-sidebar):not(.mini) .top-nav {
+  height: var(--sl-head-h) !important;
+  min-height: 0 !important;
+  margin-top: calc(-1 * var(--sl-head-h)) !important;
+  /* Right padding clears the window buttons (lyrics, mini player, minimize, maximize, close). */
+  padding: 0 calc(var(--sl-controls-w, 224px)) 0 16px !important;
+  /* Search in the middle column; source switch + Settings grouped in the right column, beside the window
+     buttons. The right column never gets narrower than its buttons. */
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 480px) minmax(max-content, 1fr);
+  align-items: center !important;
+  justify-content: stretch !important;
+  column-gap: 12px;
+  z-index: 1001 !important;
+  pointer-events: none;
+}
+body.theme-dark.hide-titlebar:not(.classic-sidebar):not(.mini) .top-nav { margin-top: 0 !important; }
+/* The row's empty space stays window-drag (the titlebar underneath); its controls take the clicks. */
+body.theme-dark .top-nav > * { pointer-events: auto; -webkit-app-region: no-drag; }
+
+/* The doubled class outranks styles.css's centering rule (.top-nav:not(..):not(..) .search-box-wrapper). */
+html body.theme-dark .top-nav .search-box-wrapper.search-box-wrapper {
+  position: static !important;
+  inset: auto !important;
+  transform: none !important;
+  grid-column: 2;
+  grid-row: 1;
+  width: 100% !important;
+  min-width: 0;
+  max-width: none;
+  margin: 0 !important;
+}
+/* Both sit in the right column, Settings at the far end and the switch just before it. */
+body.theme-dark .top-nav .platform-switch-container {
+  grid-column: 3;
+  grid-row: 1;
+  justify-self: end;
+  margin: 0 48px 0 0 !important;
+}
+body.theme-dark .top-nav #sl-head-settings { grid-column: 3; grid-row: 1; justify-self: end; }
+
+.sl-head-btn {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: 10px;
+  background: none;
+  color: var(--md-sys-color-on-surface-variant);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.sl-head-btn:hover { color: #fff; background: rgba(255, 255, 255, 0.06); }
+
+/* Below 1500 px the platform switch drops its labels (icons + tooltips stay) so the search keeps its room. */
+@media (max-width: 1500px) {
+  body.theme-dark .top-nav .platform-btn span { display: none !important; }
+  body.theme-dark .top-nav .platform-btn { padding-left: 12px !important; padding-right: 12px !important; }
+}
+
+/* ---- Sidebar: rank card, then Home / Soul Search / Soul Playback, then the library. Full height. ---- */
+body.theme-dark #sidebar #sb-bottom-icon-bar,
+body.theme-dark.sidebar-expanded #sidebar #nav-active-indicator { display: none !important; }
+
+body.theme-dark:not(.classic-sidebar):not(.mini) #sidebar { bottom: var(--sl-gap) !important; }
+
+/* "Create playlist" moved from the hidden footer to the end of the tabs. */
+.sl-lib-add {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 9px;
+  background: none;
+  color: var(--md-sys-color-on-surface-variant);
+  cursor: pointer;
+}
+.sl-lib-add:hover { color: #fff; background: rgba(255, 255, 255, 0.06); }
+
+/* ---- Content column: below the header, above the dock; full width with Lyrics off ---- */
+body.theme-dark:not(.classic-sidebar):not(.mini) .app-layout {
+  margin-bottom: var(--sl-dock-space) !important;
+  height: calc(100vh - var(--sl-head-h) - var(--sl-dock-space)) !important;
+  max-height: calc(100vh - var(--sl-head-h) - var(--sl-dock-space)) !important;
+  padding-right: var(--sl-gap);
+}
+body.theme-dark.hide-titlebar:not(.classic-sidebar):not(.mini) .app-layout {
+  height: calc(100vh - var(--sl-head-h) - var(--sl-dock-space)) !important;
+  max-height: calc(100vh - var(--sl-head-h) - var(--sl-dock-space)) !important;
+}
+body.theme-dark #right-panel.hidden { display: none !important; }
+
+/* ---- Player: a floating dock centered under the content, seek bar on its top edge ---- */
+body.theme-dark:not(.classic-sidebar):not(.mini) #playbar {
+  left: var(--sidebar-w, 296px) !important;
+  right: var(--sl-gap) !important;
+  bottom: var(--sl-dock-bottom) !important;
+  width: auto !important;
+  max-width: 920px !important;
+  height: var(--sl-pb-h) !important;
+  margin: 0 auto !important;
+  padding: 14px 22px 0 !important;
+  border-radius: 20px !important;
+  grid-template-columns: minmax(150px, 1fr) auto max-content !important;
+  column-gap: 20px !important;
+  align-items: center !important;
+  overflow: visible !important;
+}
+body.theme-dark:not(.sidebar-expanded):not(.classic-sidebar):not(.mini) #playbar { left: 84px !important; }
+
+/* Center column: [elapsed] [transport] [duration]. The seek track itself goes to the dock's top edge. */
+body.theme-dark #playbar .playbar-center {
+  position: static !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  gap: 12px !important;
+  width: auto !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  height: 100%;
+}
+/* The hover-only buttons next to the title would eat the dock's width; they show on hover instead. */
+body.theme-dark #playbar .playbar-left #btn-edit-current-track,
+body.theme-dark #playbar .playbar-left #btn-playbar-more,
+body.theme-dark #playbar .playbar-left #btn-playbar-share { display: none !important; }
+body.theme-dark #playbar .playbar-left:hover #btn-edit-current-track,
+body.theme-dark #playbar .playbar-left:hover #btn-playbar-share { display: grid !important; }
+body.theme-dark #playbar .scrubber-bar-wrapper { display: contents !important; }
+/* Top strip of the dock: [elapsed] ——— seek bar ——— [duration]. Keeps the row below free for the title. */
+body.theme-dark #playbar #time-current,
+body.theme-dark #playbar #time-duration {
+  position: absolute !important;
+  top: 2px;
+  min-width: 0 !important;
+  margin: 0 !important;
+  font-size: 10.5px !important;
+  line-height: 12px !important;
+  font-variant-numeric: tabular-nums;
+  color: var(--md-sys-color-on-surface-variant);
+}
+body.theme-dark #playbar #time-current { left: 22px; text-align: left; }
+body.theme-dark #playbar #time-duration { right: 22px; text-align: right; }
+/* Just inside the top edge (not across the border), between the two times. */
+body.theme-dark #playbar #scrubber-track {
+  position: absolute !important;
+  left: 58px !important;
+  right: 58px !important;
+  top: 2px !important;
+  width: auto !important;
+  height: 12px !important;
+  margin: 0 !important;
+  z-index: 2;
+}
+
+/* Tighter tools on the right so the dock fits 960 px. */
+body.theme-dark #playbar .playbar-right { gap: 4px !important; }
+
+/* Narrow windows: drop two of the less-used tools before anything clips. */
+@media (max-width: 1100px) {
+  body.theme-dark #playbar #btn-ob-visualizer,
+  body.theme-dark #playbar #btn-ob-miniplayer { display: none !important; }
+}
+body.theme-dark #playbar .playbar-right .visualizer-container { display: none !important; }
+body.theme-dark #playbar .playbar-right .btn-icon-pill { width: 34px !important; height: 34px !important; min-width: 34px !important; }
+/* Volume slider opens when you hover the volume button, so the track title gets the room. */
+body.theme-dark #playbar .volume-slider-wrapper {
+  width: 0 !important;
+  min-width: 0 !important;
+  overflow: hidden;
+  opacity: 0;
+  transition: width 0.2s var(--sl-ease), opacity 0.15s ease;
+}
+body.theme-dark #playbar .volume-control-group:hover .volume-slider-wrapper,
+body.theme-dark #playbar .volume-control-group:focus-within .volume-slider-wrapper { width: 84px !important; opacity: 1; }
+body.theme-dark #playbar .playbar-left { min-width: 0; }
+body.theme-dark #playbar .playbar-left .artwork-wrapper,
+body.theme-dark #playbar .playbar-left .track-artwork { width: 48px !important; height: 48px !important; }
+
+/* Flyouts above the dock */
+body.theme-dark .ob-upnext { bottom: calc(var(--sl-pb-h) + var(--sl-dock-bottom) + 14px); }
+
+/* ---- Home ---- */
+
+/* Section titles in plain sentence case (no "01 FOR YOU" index). */
+body.theme-dark #sp-home .sp-section > h2 {
+  font-family: var(--sl-display) !important;
+  font-size: 22px !important;
+  font-weight: 750 !important;
+  letter-spacing: -0.02em !important;
+  text-transform: none !important;
+  color: var(--md-sys-color-on-surface) !important;
+}
+body.theme-dark #sp-home .sp-section > h2 * { text-transform: none !important; letter-spacing: inherit !important; }
+body.theme-dark #sp-home .sp-section > h2::before,
+body.theme-dark #sp-home .sp-section > h2::after { content: none !important; display: none !important; }
+
+/* Daily Mix: one cover, not Riff's 2x2 collage. */
+body.theme-dark #sp-home .sp-grid-cover { display: block !important; position: relative; width: 100%; height: 100%; }
+body.theme-dark #sp-home .sp-grid-cover > * { display: none !important; }
+body.theme-dark #sp-home .sp-grid-cover > :first-child {
+  display: block !important;
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover;
+}
+body.theme-dark #sp-home .sp-grid-cover::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, transparent 45%, rgba(36, 14, 82, 0.75));
+  pointer-events: none;
+}
+
+/* "Jump back in": one horizontal row. */
+body.theme-dark #sp-home #sp-quick {
+  display: flex !important;
+  grid-template-columns: none !important;
+  gap: 10px !important;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding-bottom: 6px;
+  scroll-snap-type: x proximity;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.14) transparent;
+}
+body.theme-dark #sp-home #sp-quick .sp-tile {
+  flex: 0 0 248px !important;
+  width: 248px !important;
+  scroll-snap-align: start;
+}
+
+/* Hero: greeting, rank, this month's time, and Resume. */
+.sl-hero {
+  display: flex;
+  align-items: stretch;
+  justify-content: space-between;
+  gap: 24px;
+  margin: 4px 0 30px;
+  padding: 26px 26px 24px;
+  border-radius: 18px;
+  border: 1px solid var(--sl-edge, rgba(139, 92, 246, 0.18));
+  background: linear-gradient(120deg, rgba(124, 58, 237, 0.14), rgba(5, 5, 8, 0) 55%), #08080d;
+}
+.sl-hero:empty { display: none; }
+.sl-hero-main { min-width: 0; display: flex; flex-direction: column; justify-content: space-between; gap: 18px; }
+.sl-hero-title {
+  margin: 0;
+  font-family: var(--sl-display);
+  font-size: clamp(30px, 3.4vw, 44px);
+  font-weight: 750;
+  line-height: 1;
+  letter-spacing: -0.04em;
+  color: #fff;
+}
+.sl-hero-stats { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 34px; }
+.sl-hero-rank, .sl-hero-month {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.sl-hero-month { flex-direction: column; align-items: flex-start; gap: 2px; }
+.sl-hero-emblem { display: grid; place-items: center; width: 40px; height: 40px; flex: none; }
+.sl-hero-emblem svg { width: 40px; height: 40px; }
+.sl-hero-rank-text { display: flex; flex-direction: column; gap: 5px; min-width: 170px; }
+.sl-hero-rank-name { font-size: 14px; font-weight: 700; color: #fff; }
+.sl-hero-rank-name em { margin-left: 4px; font-style: normal; font-size: 12px; font-weight: 600; color: #c4b5fd; }
+.sl-hero-bar { display: block; height: 4px; border-radius: 2px; background: rgba(255, 255, 255, 0.08); overflow: hidden; }
+.sl-hero-bar i { display: block; height: 100%; border-radius: 2px; background: var(--sl-violet-hi, #8b5cf6); }
+.sl-hero-rank-sub { font-size: 12px; color: var(--md-sys-color-on-surface-variant); }
+.sl-hero-big { font-family: var(--sl-display); font-size: 26px; font-weight: 750; letter-spacing: -0.03em; color: #fff; }
+.sl-hero-rank:hover .sl-hero-rank-name, .sl-hero-month:hover .sl-hero-big { color: #ddd6fe; }
+
+.sl-resume {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex: 0 1 380px;
+  min-width: 260px;
+  align-self: center;
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.035);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.sl-resume:hover { background: rgba(255, 255, 255, 0.06); border-color: rgba(139, 92, 246, 0.35); }
+.sl-resume-art { flex: none; width: 64px; height: 64px; overflow: hidden; border-radius: 8px; background: #17151f; }
+.sl-resume-art img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.sl-resume-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.sl-resume-kind { font-size: 12px; color: #c4b5fd; }
+.sl-resume-title { font-size: 15px; font-weight: 700; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sl-resume-sub { font-size: 12.5px; color: var(--md-sys-color-on-surface-variant); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sl-resume-btn {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  background: var(--sl-violet, #7c3aed);
+  color: #fff;
+}
+.sl-resume-btn svg { width: 18px; height: 18px; }
+.sl-resume:not(.is-playing) .sl-resume-btn svg { margin-left: 2px; }
+
+@media (max-width: 1100px) {
+  .sl-hero { flex-direction: column; }
+  .sl-resume { flex: none; align-self: stretch; }
+}
+
+/* =====================================================================
+   Settings, account page, avatar crop, and the Jump back in row.
+   ===================================================================== */
+
+/* ---- Jump back in: scrolls sideways without a visible bar (trackpad, Shift + wheel); the edge fades to hint more ---- */
+body.theme-dark #sp-home #sp-quick {
+  scrollbar-width: none !important;
+  padding-bottom: 0 !important;
+  -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 48px), transparent);
+  mask-image: linear-gradient(90deg, #000 calc(100% - 48px), transparent);
+}
+body.theme-dark #sp-home #sp-quick::-webkit-scrollbar { display: none; }
+
+/* ---- Settings window ---- */
+body.theme-dark #view-settings {
+  background: rgba(0, 0, 0, 0.6) !important;
+  backdrop-filter: blur(6px);
+}
+body.theme-dark #view-settings .settings-view {
+  border-radius: 18px !important;
+  border: 1px solid var(--sl-edge, rgba(139, 92, 246, 0.18)) !important;
+  background: #07070b !important;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.6) !important;
+  overflow: hidden;
+}
+
+/* Nav: your profile first, then search, then the categories. Plain rows, a violet bar on the open one. */
+body.theme-dark #settings-nav {
+  background: transparent !important;
+  border-right: 1px solid rgba(255, 255, 255, 0.06) !important;
+  padding: 16px 12px !important;
+  gap: 2px !important;
+  justify-content: flex-start !important;
+  overflow-y: auto;
+}
+/* Riff pins the account button to the bottom with margin-top: auto; at the top it needs none. */
+body.theme-dark #settings-nav > .settings-account-nav-btn { order: -2; margin: 0 !important; }
+body.theme-dark #settings-nav > .settings-search-box { order: -1; margin: 10px 0 10px !important; }
+body.theme-dark #settings-nav > div:not(.settings-search-box) { display: none; }
+
+body.theme-dark #settings-nav .settings-search-box,
+body.theme-dark #settings-nav .settings-search-box input {
+  height: 36px !important;
+  border-radius: 10px !important;
+}
+body.theme-dark #settings-nav .settings-search-box {
+  border: 1px solid rgba(255, 255, 255, 0.07) !important;
+  background: rgba(255, 255, 255, 0.03) !important;
+}
+body.theme-dark #settings-nav .settings-search-box input { background: transparent !important; font-size: 13px !important; }
+
+body.theme-dark #settings-nav .settings-nav-btn {
+  height: 38px !important;
+  min-height: 38px !important;
+  padding: 0 12px !important;
+  gap: 12px !important;
+  border-radius: 8px !important;
+  background: none !important;
+  background-image: none !important;
+  color: var(--md-sys-color-on-surface-variant) !important;
+  font-size: 14px !important;
+  font-weight: 600 !important;
+  box-shadow: none !important;
+  transform: none !important;
+}
+body.theme-dark #settings-nav .settings-nav-btn svg,
+body.theme-dark #settings-nav .settings-nav-btn .material-symbols-outlined { width: 18px !important; height: 18px !important; font-size: 18px !important; opacity: 0.85; }
+body.theme-dark #settings-nav .settings-nav-btn:hover { background: rgba(255, 255, 255, 0.04) !important; color: #fff !important; }
+body.theme-dark #settings-nav .settings-nav-btn.active {
+  background: rgba(139, 92, 246, 0.14) !important;
+  color: #fff !important;
+  box-shadow: inset 2px 0 0 var(--ob-violet, #8b5cf6) !important;
+}
+body.theme-dark #settings-nav .settings-nav-btn.active svg { color: #c4b5fd; opacity: 1; }
+
+/* Profile row at the top of the nav */
+body.theme-dark #settings-nav .settings-account-nav-btn {
+  height: 56px !important;
+  min-height: 56px !important;
+  padding: 0 10px !important;
+  gap: 12px !important;
+  border-radius: 12px !important;
+  border: 1px solid rgba(255, 255, 255, 0.06) !important;
+  background: rgba(255, 255, 255, 0.025) !important;
+  box-shadow: none !important;
+}
+body.theme-dark #settings-nav .settings-account-nav-btn.active {
+  border-color: rgba(139, 92, 246, 0.4) !important;
+  background: rgba(139, 92, 246, 0.1) !important;
+  box-shadow: none !important;
+}
+body.theme-dark #settings-nav .settings-nav-avatar {
+  width: 36px !important;
+  height: 36px !important;
+  border-radius: 50% !important;
+  object-fit: cover;
+  background: #17151f;
+}
+body.theme-dark #settings-nav .settings-nav-account-name { font-size: 14px !important; font-weight: 700 !important; color: #fff !important; }
+body.theme-dark #settings-nav .settings-nav-account-sub { font-size: 12px !important; color: var(--md-sys-color-on-surface-variant) !important; opacity: 1 !important; }
+
+/* Pane: one framed list per group, rows divided by hairlines (not stacked filled cards). */
+body.theme-dark #view-settings .m3-group {
+  gap: 0 !important;
+  padding: 0 !important;
+  border: 1px solid rgba(255, 255, 255, 0.06) !important;
+  border-radius: 14px !important;
+  background: #0a0a0f !important;
+  overflow: hidden;
+}
+body.theme-dark #view-settings .m3-group > .setting-item {
+  border-radius: 0 !important;
+  background: transparent !important;
+  padding: 16px 20px !important;
+  box-shadow: none !important;
+}
+body.theme-dark #view-settings .m3-group > .setting-item + .setting-item { border-top: 1px solid rgba(255, 255, 255, 0.05) !important; }
+body.theme-dark #view-settings .setting-name { font-size: 14px !important; font-weight: 650 !important; color: #fff !important; }
+body.theme-dark #view-settings .setting-hint { font-size: 12.5px !important; line-height: 1.45 !important; color: var(--md-sys-color-on-surface-variant) !important; }
+
+/* Switches: same size and thumb movement as before, Soulleak colors. */
+body.theme-dark #view-settings .effect-switch-btn {
+  border: 1px solid rgba(255, 255, 255, 0.14) !important;
+  background: rgba(255, 255, 255, 0.06) !important;
+}
+body.theme-dark #view-settings .effect-switch-btn.active {
+  border-color: transparent !important;
+  background: var(--sl-violet, #7c3aed) !important;
+}
+body.theme-dark #view-settings .effect-switch-btn .thumb { background: #9a98a8 !important; box-shadow: none !important; }
+body.theme-dark #view-settings .effect-switch-btn.active .thumb { background: #fff !important; }
+
+body.theme-dark #view-settings select.pill-select {
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-radius: 10px !important;
+  background-color: rgba(255, 255, 255, 0.035) !important;
+}
+
+/* ---- Account page: just you. No meme picture, no droplet pattern. ---- */
+body.theme-dark #tg-account-hero .tg-account-pattern,
+body.theme-dark #tg-easter-meme { display: none !important; }
+body.theme-dark #tg-account-hero {
+  min-height: 0 !important;
+  height: auto !important;
+  padding: 28px 28px !important;
+  margin-bottom: 16px !important;
+  border-radius: 14px !important;
+  border: 1px solid rgba(255, 255, 255, 0.06) !important;
+  background: linear-gradient(120deg, rgba(124, 58, 237, 0.22), rgba(10, 10, 15, 0) 60%), #0a0a0f !important;
+}
+body.theme-dark #tg-account-hero { justify-content: flex-start !important; text-align: left !important; }
+body.theme-dark #tg-account-hero .tg-account-center {
+  flex-direction: row !important;
+  justify-content: flex-start !important;
+  align-items: center !important;
+  gap: 20px !important;
+  width: 100% !important;
+  margin: 0 !important;
+}
+/* The orbiting service icons are Riff's; "Manage integrations" next to them opens the same thing. */
+body.theme-dark #acc-orbital-widget { display: none !important; }
+body.theme-dark #btn-pick-account-avatar.account-avatar-picker {
+  width: 96px !important;
+  height: 96px !important;
+  border-radius: 50% !important;
+  box-shadow: 0 0 0 3px #07070b, 0 0 0 4px rgba(139, 92, 246, 0.45) !important;
+}
+body.theme-dark #account-profile-avatar { border-radius: 50% !important; object-fit: cover; }
+body.theme-dark #tg-account-hero .tg-account-name-input {
+  text-align: left !important;
+  font-family: var(--sl-display) !important;
+  font-size: 30px !important;
+  font-weight: 750 !important;
+  letter-spacing: -0.03em;
+}
+
+/* ---- Avatar crop ---- */
+.slc-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100000;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, 0.62);
+  backdrop-filter: blur(6px);
+  opacity: 0;
+  transition: opacity 0.16s ease;
+}
+.slc-backdrop.is-open { opacity: 1; }
+.slc-backdrop.is-leaving { opacity: 0; }
+.slc-card {
+  width: 360px;
+  padding: 22px 30px 20px;
+  border-radius: 18px;
+  border: 1px solid rgba(139, 92, 246, 0.25);
+  background: #0a0a0f;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.65);
+  color: #fff;
+  text-align: center;
+}
+.slc-title { margin: 0; font-family: var(--sl-display, inherit); font-size: 20px; font-weight: 750; letter-spacing: -0.02em; }
+.slc-sub { margin: 4px 0 18px; font-size: 12.5px; color: var(--md-sys-color-on-surface-variant, #a1a1aa); }
+.slc-stage { position: relative; width: 300px; height: 300px; margin: 0 auto; border-radius: 12px; overflow: hidden; background: #000; }
+.slc-canvas { display: block; width: 300px; height: 300px; cursor: grab; touch-action: none; }
+.slc-canvas.is-dragging { cursor: grabbing; }
+/* Dim everything outside the circle that will be kept. */
+.slc-mask {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(circle at center, transparent 149px, rgba(0, 0, 0, 0.62) 150px);
+}
+.slc-mask::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, 0.55);
+}
+.slc-zoom { display: flex; align-items: center; gap: 12px; margin: 18px 0 0; font-size: 12.5px; color: var(--md-sys-color-on-surface-variant, #a1a1aa); }
+.slc-zoom input { flex: 1; accent-color: #8b5cf6; }
+.slc-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
+.slc-btn {
+  height: 38px;
+  padding: 0 18px;
+  border: 0;
+  border-radius: 10px;
+  background: none;
+  color: #fff;
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 650;
+  cursor: pointer;
+}
+.slc-btn.ghost { color: var(--md-sys-color-on-surface-variant, #a1a1aa); }
+.slc-btn.ghost:hover { color: #fff; background: rgba(255, 255, 255, 0.06); }
+.slc-btn.primary { background: #7c3aed; }
+.slc-btn.primary:hover { background: #8b5cf6; }
+
+/* Home rows can be dragged sideways (shell.js). */
+body.theme-dark #sp-home .sp-row, body.theme-dark #sp-home #sp-quick { cursor: grab; }
+body.theme-dark #sp-home .sl-dragging { cursor: grabbing !important; scroll-snap-type: none !important; scroll-behavior: auto !important; user-select: none; }
+body.theme-dark #sp-home .sl-dragging * { pointer-events: none; }
+body.theme-dark #sp-home .sp-row img, body.theme-dark #sp-home #sp-quick img { -webkit-user-drag: none; }

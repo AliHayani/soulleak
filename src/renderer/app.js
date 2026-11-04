@@ -808,7 +808,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     vibeTracks: (Array.isArray(state.vibeTracks) && state.vibeTracks.length > 0) ? state.vibeTracks : [],
     _isNaturalEnding: false,
     _skipRecordedFor: null,
-    isRightPanelOpen: true,
+    // Soulleak: the lyrics panel stays closed until the Lyrics button opens it, so Home gets the full width.
+    isRightPanelOpen: false,
     lyricsMode: 'word',
     uiScale: savedScale,
     activePresetId: soundPersistenceEnabled ? (localStorage.getItem('riff_active_preset') || 'p_default') : 'p_default',
@@ -4572,6 +4573,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     localStorage.setItem('devsize_history', JSON.stringify(state.history));
     updateHistoryBadge();
     if (state.currentView === 'history') renderHistoryView();
+    if (state.currentView === 'discover') renderHomeHistory();
 
     updateNowPlayingUI(track);
     updatePlayPauseButton(false, true);
@@ -19190,6 +19192,10 @@ function bindCoverHoldZoom(wrapEl) {
       },
       openArtist: (name) => openArtistProfile(name),
       toast: (msg, type) => showToast(msg, type),
+      // For the Home hero's "Resume" card.
+      current: () => state.currentTrack,
+      isPlaying: () => !!state.isPlaying,
+      togglePlay: () => togglePlayPause(),
     });
   }
 
@@ -20812,6 +20818,9 @@ function bindCoverHoldZoom(wrapEl) {
 
   window.addEventListener('keydown', (e) => {
     const inInput = isTextInput(e.target);
+
+    // The avatar crop window (avatar-crop.js) handles its own Escape; Settings behind it stays open.
+    if ((e.code === 'Escape' || e.key === 'Escape') && document.querySelector('.slc-backdrop')) return;
 
     if (e.code === 'Escape' || e.key === 'Escape') {
       if (el.viewSettings && el.viewSettings.classList.contains('active')) {
@@ -24392,7 +24401,9 @@ function bindCoverHoldZoom(wrapEl) {
   if (btnPickAccountAvatar) {
     btnPickAccountAvatar.addEventListener('click', async () => {
       if (window.electronAPI && window.electronAPI.pickMedia) {
-        const url = await window.electronAPI.pickMedia();
+        let url = await window.electronAPI.pickMedia();
+        // Still images go through the crop step first; GIFs and videos are kept as they are so they keep moving.
+        if (url && window.SoulleakCrop && /\.(png|jpe?g|webp)$/i.test(url)) url = await window.SoulleakCrop.open(url);
         if (url) {
           localStorage.setItem('riff_user_avatar', url);
           syncLocalAccountUI();
@@ -27213,6 +27224,31 @@ function bindCoverHoldZoom(wrapEl) {
     }
   }
 
+  // Home "History" row: your most recent plays (newest first), in the same card style as the other rows.
+  function renderHomeHistory() {
+    const sec = document.getElementById('sp-trend-sec');
+    const row = document.getElementById('sp-trend');
+    if (!sec || !row) return;
+    const list = (state.history || []).filter((t) => t && !isTrackBlocked(t) && !isArtistBlocked(t.artist)).slice(0, 20);
+    sec.hidden = list.length === 0;
+    if (!list.length) { row.innerHTML = ''; return; }
+    const scroll = row.scrollLeft;
+    row.innerHTML = '';
+    list.forEach((track, idx) => {
+      row.appendChild(spCard({
+        cover: (typeof getTrackThumbUrl === 'function' ? getTrackThumbUrl(track) : '') || track.thumbnail || track.cover || '',
+        title: track.title || 'Untitled',
+        sub: track.artist || 'Unknown artist',
+        isExplicit: isTrackExplicit(track),
+        onClick: () => {
+          state.isRadioQueue = false;
+          playTrack(track, [...list], idx);
+        }
+      }));
+    });
+    row.scrollLeft = scroll;
+  }
+
   function renderTrendingCards(row, tracks) {
     row.innerHTML = '';
     const filteredTracks = (tracks || []).filter(t => !isTrackBlocked(t) && !isArtistBlocked(t.artist));
@@ -27592,8 +27628,10 @@ function bindCoverHoldZoom(wrapEl) {
   }
 
   function renderSpotifyHome() {
+    if (window.SoulPlayback) window.SoulPlayback.renderHero();
     renderQuickAccess();
-    renderTrending();
+    // Soulleak: the row that showed Trending now shows your listening history.
+    renderHomeHistory();
     renderMadeForYou();
     renderFavArtistsHome();
   }
