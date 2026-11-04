@@ -3070,8 +3070,26 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   let lastFrameTime = 0;
+  let vizIdleTimer = 0;
+  const visibleEl = (id) => { const n = document.getElementById(id); return !!(n && n.offsetParent !== null); };
+  function vizNeedsFrames() {
+    if (isDraggingScrubber || isPauseFading) return true;
+    const b = document.body.classList;
+    if (b.contains('unfocused')) return false;
+    if (state.isTvKaraokeOpen) return true;
+    // Lite mode draws none of the visualizers below.
+    if (!b.contains('perf')) {
+      if (state.vfx && state.vfx.bassPulse) return true;
+      if ((b.contains('bar-viz-behind') || isVizConnectedMode()) && !b.contains('mini') && localStorage.getItem('riff_bar_wave') !== '0') return true;
+      // Gap bars only show in the lyrics panel.
+      if (state.isRightPanelOpen && document.querySelector('.lyric-line.lyric-gap.active')) return true;
+      if (el.visualizerCanvas && el.visualizerCanvas.offsetParent !== null) return true;
+    }
+    return visibleEl('squiggly-canvas') || visibleEl('cc-playhead');
+  }
   function startVisualizers() {
     if (!state.isWindowVisible) return;
+    clearTimeout(vizIdleTimer);
     if (animationFrameId) cancelAnimationFrame(animationFrameId);
 
     const analyserNode = audioEngine && audioEngine.getAnalyserNode ? audioEngine.getAnalyserNode() : null;
@@ -3103,7 +3121,18 @@ document.addEventListener('DOMContentLoaded', async () => {
         hasDrawnPausedFrame = false;
       }
 
-      animationFrameId = requestAnimationFrame(renderLoop);
+      // Nothing on screen needs per-frame drawing (no visualizer, wavy seek bar, karaoke, gap bars, bass pulse,
+      // drag), or the window is in the background: check 4 times a second instead of 60. Time labels, trims and
+      // prefetching below still run on every check.
+      if (vizNeedsFrames()) {
+        animationFrameId = requestAnimationFrame(renderLoop);
+      } else {
+        animationFrameId = -1;
+        clearTimeout(vizIdleTimer);
+        vizIdleTimer = setTimeout(() => {
+          if (animationFrameId === -1) animationFrameId = requestAnimationFrame(renderLoop);
+        }, 250);
+      }
 
       try {
         const activeTrim = state.currentTrack ? getTrackTrim(state.currentTrack) : null;
@@ -10132,8 +10161,11 @@ document.addEventListener('DOMContentLoaded', async () => {
           const p = svg.querySelector('path');
           if (p) p.setAttribute('d', d);
         });
+        requestAnimationFrame(tick);
+      } else {
+        // No spinner on screen: look again in 150 ms instead of searching the page every frame.
+        setTimeout(() => requestAnimationFrame(tick), 150);
       }
-      requestAnimationFrame(tick);
     }
     requestAnimationFrame(tick);
   }
@@ -14119,6 +14151,7 @@ function renderClickableArtists(container, rawArtist, hintTrack = null) {
       [el.viewDiscover, el.viewSoul, el.viewPlayback, el.viewFavorites, el.viewAlbums, el.viewLocal, el.viewHistory, el.viewQueue, el.viewPlaylistDetail, el.viewAlbum, el.viewArtist].forEach(v => {
         if (v) v.classList.remove('active');
       });
+      if (viewName !== 'soul' && el.viewSoul) el.viewSoul.classList.remove('soul-enter', 'soul-settled');
 
         const nestedView = viewName === 'playlist-detail' || viewName === 'album' || viewName === 'artist';
         if (!nestedView) {
@@ -14227,8 +14260,10 @@ function renderClickableArtists(container, rawArtist, hintTrack = null) {
         }
         return;
       }
+      // Only touch classes that are there: classList.remove() writes the attribute even when nothing changes,
+      // which fired the MutationObserver below again and kept this running every frame (about 6% CPU).
       sNav.querySelectorAll('.nav-item').forEach((n) => {
-        n.classList.remove('stack-only', 'stack-first', 'stack-mid', 'stack-last', 'stack-h');
+        ['stack-only', 'stack-first', 'stack-mid', 'stack-last', 'stack-h'].forEach((c) => { if (n.classList.contains(c)) n.classList.remove(c); });
       });
     }
     applyStackedRadius(document.querySelector('.settings-nav'), '.settings-nav-btn', false);
@@ -14519,11 +14554,13 @@ function updateNavIndicator(animate) {
     const enter = () => {
       switchView('soul', { sync: true });
       if (!el.viewSoul) return;
-      el.viewSoul.classList.remove('soul-enter');
+      el.viewSoul.classList.remove('soul-enter', 'soul-settled');
       void el.viewSoul.offsetWidth;
       el.viewSoul.classList.add('soul-enter');
       clearTimeout(el.viewSoul._enterTimer);
-      el.viewSoul._enterTimer = setTimeout(() => el.viewSoul.classList.remove('soul-enter'), 1600);
+      // Swap to 'soul-settled', not back to nothing: without either class the generic page fade-in
+      // (.content-view.active) applies again and the whole page animated in a second time.
+      el.viewSoul._enterTimer = setTimeout(() => el.viewSoul.classList.replace('soul-enter', 'soul-settled'), 1600);
     };
     if (state.currentView === 'soul' || calm || !main || !fromEl || typeof document.startViewTransition !== 'function') {
       if (state.currentView !== 'soul') enter();
@@ -18715,9 +18752,34 @@ function bindCoverHoldZoom(wrapEl) {
         lastBuf = b;
         buf.style.transform = `scaleX(${b})`;
       }
-      requestAnimationFrame(paint);
     };
-    requestAnimationFrame(paint);
+    // Once a second while playing (it used to repaint every frame, ~60 times a second), every frame only while the
+    // knob is being dragged, and right away on seeks / song changes. Nothing while the window is hidden.
+    let paintTimer = 0;
+    let paintRaf = 0;
+    const dragging = () => state.scrubberDragTargetTime !== undefined || isDraggingScrubber;
+    const schedule = () => {
+      if (paintRaf || paintTimer) return;
+      if (dragging()) paintRaf = requestAnimationFrame(loop);
+      else paintTimer = setTimeout(loop, 1000);
+    };
+    function loop() {
+      paintRaf = 0;
+      paintTimer = 0;
+      if (!document.hidden && state.isWindowVisible !== false) paint();
+      schedule();
+    }
+    const paintNow = () => {
+      paint();
+      // A drag just started: switch from the 1 s timer to every frame.
+      if (dragging() && !paintRaf) { clearTimeout(paintTimer); paintTimer = 0; schedule(); }
+    };
+    ['seeking', 'seeked', 'play', 'pause', 'loadedmetadata', 'durationchange', 'emptied'].forEach((ev) => {
+      if (el.nativeAudio) el.nativeAudio.addEventListener(ev, paintNow);
+    });
+    track.addEventListener('mousedown', () => requestAnimationFrame(paintNow));
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) paint(); });
+    loop();
 
     track.addEventListener('mousemove', (e) => {
       const p = posFromX(e.clientX);
@@ -19310,10 +19372,13 @@ function bindCoverHoldZoom(wrapEl) {
   loadStats()
     .then(() => (window.SoulPlayback ? window.SoulPlayback.ready() : null))
     .then(() => { if (typeof renderHeavyRotation === 'function') renderHeavyRotation(); });
+  let lastStatsTrack = null;
   setInterval(() => {
     const audio = el.nativeAudio;
     const t = state.currentTrack;
     if (!state.isPlaying || !audio || audio.paused || !t) return;
+    // Rank XP is saved every 15 s, on close, and when the song changes.
+    if (t !== lastStatsTrack) { if (lastStatsTrack) flushStats(); lastStatsTrack = t; }
     bumpStat('total', 1, 'All listening');
     const artist = primaryArtist(t);
     if (artist) bumpStat(`artist:${artist.toLowerCase()}`, 1, artist);
@@ -20723,7 +20788,7 @@ function bindCoverHoldZoom(wrapEl) {
         });
         if (!res.ok) throw new Error('HTTP ' + res.status);
         const json = await res.json();
-        const latestVersion = (json.tag_name || '').replace(/^v/i, '');
+        const latestVersion = ((/(\d+\.\d+\.\d+)/.exec(json.tag_name || '') || [])[1]) || '';
         fallbackReleaseUrl = json.html_url || `https://github.com/${repo}/releases/latest`;
         if (isNewerVersion(latestVersion, currentAppVersion)) {
           latestUpdateInfo = {
@@ -22295,7 +22360,11 @@ function bindCoverHoldZoom(wrapEl) {
     soulFs.root.classList.toggle('is-playing', !!state.isPlaying);
     fsUpdateLyric(fsHeardTime(t) - (soulFs.offset || 0));
     fsDrawWave();
-    soulFs.raf = requestAnimationFrame(fsFrame);
+    // Paused and the bars have sunk to rest: nothing moves, so check 4 times a second until playback resumes.
+    const settled = !state.isPlaying && (soulFs.beat || 0) < 0.01 && !(soulFs.bars || []).some((v) => v > 0.045);
+    clearTimeout(soulFs.idle);
+    if (settled) soulFs.idle = setTimeout(() => { if (soulFs.open) soulFs.raf = requestAnimationFrame(fsFrame); }, 250);
+    else soulFs.raf = requestAnimationFrame(fsFrame);
   }
 
   function openSoulFullscreen() {
@@ -22312,6 +22381,7 @@ function bindCoverHoldZoom(wrapEl) {
     soulFs.root.classList.add('open');
     if (soulFs.root.requestFullscreen) soulFs.root.requestFullscreen().catch(() => {});
     cancelAnimationFrame(soulFs.raf);
+    clearTimeout(soulFs.idle);
     soulFs.raf = requestAnimationFrame(fsFrame);
   }
 
@@ -22319,6 +22389,7 @@ function bindCoverHoldZoom(wrapEl) {
     if (!soulFs.open) return;
     soulFs.open = false;
     cancelAnimationFrame(soulFs.raf);
+    clearTimeout(soulFs.idle);
     soulFs.root.classList.remove('open');
     soulFs.root.setAttribute('aria-hidden', 'true');
     if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
@@ -24419,6 +24490,8 @@ function bindCoverHoldZoom(wrapEl) {
   const btnExportAccount = document.getElementById('btn-export-account');
   if (btnExportAccount) {
     btnExportAccount.addEventListener('click', async () => {
+      // Same file as Settings > Account > Export: it also carries rank XP and Soul Playback (IndexedDB).
+      if (window.SoulleakAccounts && window.SoulleakAccounts.exportActive) { window.SoulleakAccounts.exportActive(); return; }
       const dump = {};
       try {
         for (let i = 0; i < localStorage.length; i++) {
@@ -24462,6 +24535,7 @@ function bindCoverHoldZoom(wrapEl) {
         return;
       }
       const data = res.data;
+      if (window.SoulleakAccounts && window.SoulleakAccounts.replaceActive) { await window.SoulleakAccounts.replaceActive(data); return; }
       const store = data.localStorage || data;
       if (typeof store === 'object' && store !== null) {
         try { localStorage.clear(); } catch (_) {}

@@ -16,7 +16,7 @@ function writeIgnored(file, version) {
 // Soulleak tags releases "soulleak-vX.Y.Z" (so they never trigger Riff's own v* workflow).
 const TAG_PREFIX = 'soulleak-v';
 function versionFromTag(tag) {
-  const m = /(d+.d+.d+)/.exec(String(tag || ''));
+  const m = /(\d+\.\d+\.\d+)/.exec(String(tag || ''));
   return m ? m[1] : '';
 }
 
@@ -104,6 +104,7 @@ function initUpdater(getWindow) {
   const fallbackFetchGitHub = checkViaGithubApi;
 
   let autoUpdater = null;
+  let isDownloaded = false;
   const hasUpdaterSupport = !isDev || fs.existsSync(devConfigFile);
   if (hasUpdaterSupport && canInstall) {
     try {
@@ -115,8 +116,6 @@ function initUpdater(getWindow) {
       autoUpdater.setFeedURL({ provider: 'github', owner, repo });
       autoUpdater.autoDownload = false;
       autoUpdater.autoInstallOnAppQuit = false;
-
-      let isDownloaded = false;
 
       autoUpdater.on('update-available', async (info) => {
         current = info;
@@ -179,7 +178,13 @@ function initUpdater(getWindow) {
         }
       });
 
-      autoUpdater.on('error', () => {
+      autoUpdater.on('error', (err) => {
+        // The user already pressed Update and is waiting on the spinner: tell the window so it opens the release page.
+        if (installNow) {
+          installNow = false;
+          send('update-error', { message: err && err.message ? err.message : 'Update failed' });
+          return;
+        }
         fallbackFetchGitHub();
       });
     } catch (_) {
@@ -206,12 +211,11 @@ function initUpdater(getWindow) {
   const doInstallNow = () => {
     installNow = true;
     if (autoUpdater && canInstall) {
-      try {
+      if (isDownloaded) {
         autoUpdater.quitAndInstall();
-      } catch (_) {
-        autoUpdater.downloadUpdate().then(() => {
-          autoUpdater.quitAndInstall();
-        }).catch(() => {});
+      } else {
+        // Still downloading: the 'update-downloaded' handler installs as soon as it finishes.
+        autoUpdater.downloadUpdate().catch(() => {});
       }
     } else {
       shell.openExternal((current && current.htmlUrl) || releasesUrl);

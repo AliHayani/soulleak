@@ -987,7 +987,8 @@ html.soul-vt.soul-vt-lite::view-transition-old(soul-main) {
 }
 
 /* Then the page settles in: the drop swings into place and the hero rises piece by piece. */
-#view-soul.soul-enter { animation: none !important; }
+#view-soul.soul-enter,
+#view-soul.soul-settled { animation: none !important; }
 #view-soul.soul-enter .soul-hero { animation: soulHeroIn 0.9s var(--sl-ease) both; }
 #view-soul.soul-enter .soul-hero::after { animation: soulDropIn 1.2s var(--sl-spring) 0.1s both; }
 #view-soul.soul-enter .soul-hero > :not(.soul-history) { animation: slRise 0.7s var(--sl-ease) both; }
@@ -4083,3 +4084,50 @@ body.theme-dark.sl-home-amb #main-content:has(#view-discover.active) {
 /* The old Import row replaced everything; the Accounts panel adds accounts instead, and exports with ranks. */
 #settings-section-account .setting-item:has(#btn-acc-import-rfacc),
 #settings-section-account .setting-item:has(#btn-acc-export-rfacc) { display: none !important; }
+
+
+/* Update sheet: the generic .modal-backdrop rule hides every modal unless it has .visible, and the update
+   sheet only drops .hidden, so it opened invisible and "Check for updates" seemed to do nothing. */
+#update-modal.ota-update-backdrop:not(.hidden) { visibility: visible; pointer-events: auto; }
+
+
+/* =====================================================================
+   Performance
+   ===================================================================== */
+
+/* Window in the background (behind a game, another app focused): every CSS animation holds still, the same way
+   it already does when the window is minimized (body.app-paused / .hidden-window). Backdrop blurs are already off
+   while unfocused (styles.css). Audio, Discord status and the listening counters keep running. */
+body.unfocused *,
+body.unfocused *::before,
+body.unfocused *::after { animation-play-state: paused !important; }
+
+/* Blurs that cost a full re-blur whenever anything near them changed, but sat on surfaces that are already
+   90-96% opaque or over a smooth gradient, so a plain surface looks the same. */
+body.theme-dark #playbar {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  background-color: rgba(6, 6, 9, 0.96) !important;
+}
+.ob-fx-menu,
+body.theme-dark #sidebar-lib-chips,
+body.theme-dark #sp-home .sp-tile .sp-heart { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+/* The Home hero sat on an 18px backdrop blur of a smooth gradient, and its moving auras made the GPU redo that
+   blur every frame. */
+.sl-hero { backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+/* The hero's auras and motes each get their own GPU layer and can't trigger layout or paint outside the hero. */
+.sl-hero-fx { contain: strict; transform: translateZ(0); }
+
+/* Fullscreen player: the 70px blurred cover scales with the beat. On its own layer the GPU only moves the
+   already-blurred picture instead of re-blurring it every frame. */
+.soul-fs-bg {
+  will-change: transform, opacity;
+  pointer-events: none;
+  contain: strict;
+  backface-visibility: hidden;
+}
+
+/* Paused playback: the Home hero's auras and motes hold still too (they cost ~4% CPU while moving). */
+body:not(.is-playing) .sl-hero-fx::before,
+body:not(.is-playing) .sl-hero-fx::after,
+body:not(.is-playing) .sl-hero-fx i { animation-play-state: paused !important; }

@@ -178,16 +178,57 @@
     await addFromFile(res.data, res.filePath);
   }
 
-  // Turns a decrypted .rfacc (version 1.0 or 1.1) into a new account in the vault.
-  async function addFromFile(data, filePath) {
-    const res = { filePath };
+  // Reads a decrypted .rfacc (version 1.0 or 1.1). Version 1.0 files have no Soul Playback months; they still carry
+  // Soul Playback's "already backfilled" flag, which would leave the recap empty, so the flag is dropped and the
+  // recap is rebuilt from the file's listening history on first open.
+  function readFile(data) {
     const ls = (data.localStorage && typeof data.localStorage === 'object') ? data.localStorage : (typeof data === 'object' ? data : {});
     const idb = data.indexedDB || {};
-    const fileName = String(res.filePath || '').split(/[\\/]/).pop().replace(/\.rfacc$/i, '') || 'Imported account';
     const strLs = {};
     Object.entries(ls).forEach(([k, v]) => { if (!SHARED_KEYS.has(k) && v != null) strLs[k] = typeof v === 'string' ? v : JSON.stringify(v); });
     const stats = Array.isArray(idb.stats) ? idb.stats : [];
     const playback = Array.isArray(idb.playback) ? idb.playback : [];
+    if (!playback.length) {
+      delete strLs.soulleak_playback_seeded_v1;
+      delete strLs.soulleak_playback_since;
+    }
+    return { strLs, stats, playback };
+  }
+
+  // The old "Import account" button (Settings > Data): the file replaces the current account, ranks and
+  // Soul Playback included, then Soulleak restarts.
+  async function replaceActive(data) {
+    if (busy) return;
+    busy = true;
+    try {
+      const { strLs, stats, playback } = readFile(data);
+      window.__slSwitching = true;
+      await replaceAll(STATS, stats);
+      await replaceAll(PLAYBACK, playback);
+      Object.keys(lsDump()).forEach((k) => localStorage.removeItem(k));
+      Object.entries(strLs).forEach(([k, v]) => localStorage.setItem(k, v));
+      if (window.electronAPI && window.electronAPI.storageSaveSync && window.__RIFF_STORAGE_MAP__) {
+        window.electronAPI.storageSaveSync(window.__RIFF_STORAGE_MAP__);
+      }
+      freezeStorage();
+      toast('Account imported! Restarting...', 'success');
+      setTimeout(() => {
+        if (window.electronAPI && window.electronAPI.restartApp) window.electronAPI.restartApp();
+        else location.reload();
+      }, 350);
+    } catch (e) {
+      window.__slSwitching = false;
+      busy = false;
+      console.warn('[Accounts] import failed', e);
+      toast(`Couldn't import that account: ${e.message || e}`, 'error');
+    }
+  }
+
+  // Turns a decrypted .rfacc (version 1.0 or 1.1) into a new account in the vault.
+  async function addFromFile(data, filePath) {
+    const res = { filePath };
+    const fileName = String(res.filePath || '').split(/[\\/]/).pop().replace(/\.rfacc$/i, '') || 'Imported account';
+    const { strLs, stats, playback } = readFile(data);
     const rec = {
       id: 'acc_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
       name: fileName,
@@ -311,5 +352,5 @@
     ensureActiveRecord().catch(() => {});
   }
 
-  window.SoulleakAccounts = { attach, switchTo, importAccount, addFromFile, exportActive, list: listAccounts, render };
+  window.SoulleakAccounts = { attach, switchTo, importAccount, addFromFile, replaceActive, exportActive, list: listAccounts, render };
 })();

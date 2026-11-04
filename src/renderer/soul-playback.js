@@ -160,6 +160,8 @@
     const pos = Number.isFinite(position) ? position : 0;
     // A new listen: another song, or the same one started over (repeat, or played again from the top).
     if (!session || session.id !== desc.id || (pos + 3 < session.lastPos && pos < 5 && session.seconds >= PLAY_AFTER_S)) {
+      // Save the listen that just ended (between songs; otherwise every FLUSH_EVERY_S seconds and on close).
+      if (session) flush();
       session = { id: desc.id, seconds: 0, counted: false, lastPos: pos };
     }
     session.ref = track;
