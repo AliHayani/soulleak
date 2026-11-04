@@ -763,13 +763,20 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (typeof state !== 'undefined' && state) {
       state.riffFont = f;
     }
+    // Soulleak headings use their own --sl-display font (Bricolage); SF Pro and System replace it too, so the whole
+    // UI switches, not just body text. The default brings both back.
+    const rootStyle = document.documentElement.style;
     if (f === 'sf') {
       ensureSfFontLoaded();
-      document.documentElement.style.setProperty('--font-family', SF_FONT_STACK);
+      rootStyle.setProperty('--font-family', SF_FONT_STACK);
+      rootStyle.setProperty('--sl-display', SF_FONT_STACK);
     } else if (f === 'system') {
-      document.documentElement.style.setProperty('--font-family', 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif');
+      const sys = 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
+      rootStyle.setProperty('--font-family', sys);
+      rootStyle.setProperty('--sl-display', sys);
     } else {
-      document.documentElement.style.removeProperty('--font-family');
+      rootStyle.removeProperty('--font-family');
+      rootStyle.removeProperty('--sl-display');
     }
     const fontOptGoogle = document.getElementById('font-opt-google');
     const fontOptSf = document.getElementById('font-opt-sf');
@@ -813,7 +820,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     lyricsMode: 'word',
     uiScale: savedScale,
     activePresetId: soundPersistenceEnabled ? (localStorage.getItem('riff_active_preset') || 'p_default') : 'p_default',
-    themeMode: localStorage.getItem('riff_theme_mode') || 'dark',
+    // Anything but a real mode (e.g. "undefined", saved by the old font-picker bug) falls back to dark.
+    themeMode: ['dark', 'light', 'auto'].includes(localStorage.getItem('riff_theme_mode')) ? localStorage.getItem('riff_theme_mode') : 'dark',
     paletteStyle: localStorage.getItem('riff_palette_style') || 'classic',
     meshBrightness: parseInt(localStorage.getItem('riff_mesh_brightness') || '100', 10),
     themeAccent: localStorage.getItem('riff_theme_accent') || '#8b5cf6',
@@ -1609,7 +1617,40 @@ document.addEventListener('DOMContentLoaded', async () => {
   let coverBgIdx = 0;
   let activeCoverBgUrl = '';
 
+  // Soulleak ambient: the playing song's two dominant cover colors become a soft aura behind the main view
+  // (soulleak.css paints it from --sl-amb-1 / --sl-amb-2 and fades between songs).
+  // A cover's dominant colors can be grey or near black (black-and-white art), which makes no visible light.
+  // Colorful ones are kept; dark ones are lifted; near-grey ones fall back to Soulleak's violet / indigo.
+  function ambientColor(c, fallback) {
+    const m = /rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/.exec(String(c || ''));
+    if (!m) return fallback;
+    let [r, g, b] = [+m[1] / 255, +m[2] / 255, +m[3] / 255];
+    const max = Math.max(r, g, b), min = Math.min(r, g, b);
+    const l = (max + min) / 2;
+    const s = max === min ? 0 : (max - min) / (1 - Math.abs(2 * l - 1));
+    if (s < 0.2) return fallback;
+    if (l < 0.45) {
+      const k = 0.45 / Math.max(l, 0.05);
+      [r, g, b] = [r, g, b].map((v) => Math.min(1, v * k));
+    }
+    return `rgb(${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(b * 255)})`;
+  }
+
+  let soulAmbientUrl = '';
+  async function updateSoulAmbient(url) {
+    soulAmbientUrl = url || '';
+    if (!url) { document.body.classList.remove('sl-ambient-on'); return; }
+    try {
+      const [a, b] = await getCoverDominantColors(url);
+      if (soulAmbientUrl !== url) return;
+      document.body.style.setProperty('--sl-amb-1', ambientColor(a, 'rgb(139, 92, 246)'));
+      document.body.style.setProperty('--sl-amb-2', ambientColor(b || a, 'rgb(99, 102, 241)'));
+      document.body.classList.add('sl-ambient-on');
+    } catch (_) {}
+  }
+
   function setCoverBg(url) {
+    updateSoulAmbient(url);
     const enabled = getAdv('cover_bg', false);
     const layers = document.querySelectorAll('#cover-bg .cover-bg-layer');
     if (!enabled || !url) {
@@ -15763,6 +15804,9 @@ function bindCoverHoldZoom(wrapEl) {
   if (el.themeModeBtns) {
     el.themeModeBtns.forEach(btn => {
       btn.addEventListener('click', () => {
+        // The font picker (and a few other segmented controls) reuse the .theme-mode-btn class without a
+        // data-theme-mode; clicking those used to save "undefined" as the theme and drop dark mode on the next start.
+        if (!btn.dataset.themeMode) return;
         state.themeMode = btn.dataset.themeMode;
         localStorage.setItem('riff_theme_mode', state.themeMode);
         updateThemeFromState();
@@ -18884,6 +18928,8 @@ function bindCoverHoldZoom(wrapEl) {
   }
 
   function flushStats() {
+    // Mid account switch (accounts.js) the database already holds the next account; don't write this one's counters.
+    if (window.__slSwitching) return;
     if (!statsDb || !statsDirty.size) return;
     try {
       const store = statsDb.transaction('counters', 'readwrite').objectStore('counters');
@@ -19152,6 +19198,19 @@ function bindCoverHoldZoom(wrapEl) {
     });
   }
 
+  // Accounts (accounts.js): several accounts on one computer, switched in Settings > Account.
+  if (window.SoulleakAccounts) {
+    window.SoulleakAccounts.attach({
+      flush: () => { flushStats(); if (window.SoulPlayback) window.SoulPlayback.flush(); },
+      rankName: (seconds) => { const r = OB_RANKS[rankIndexFor(seconds || 0)]; return r ? r.title : ''; },
+      toast: (msg, type) => showToast(msg, type),
+      beforeSwitch: () => {
+        try { if (state.isPlaying) pauseSmooth(); } catch (_) {}
+        if (window.SoulleakLT) window.SoulleakLT.leave(true);
+      },
+    });
+  }
+
   // Soul Playback (soul-playback.js): monthly recap. It gets what it needs from the app through this adapter.
   if (window.SoulPlayback) {
     const httpArt = (u) => (typeof u === 'string' && /^https?:\/\//i.test(u) ? u : '');
@@ -19200,7 +19259,10 @@ function bindCoverHoldZoom(wrapEl) {
   }
 
   renderListenLevel();
-  loadStats().then(() => { if (window.SoulPlayback) window.SoulPlayback.ready(); });
+  // Home first renders before the listening data has loaded; Heavy rotation is redrawn once it has.
+  loadStats()
+    .then(() => (window.SoulPlayback ? window.SoulPlayback.ready() : null))
+    .then(() => { if (typeof renderHeavyRotation === 'function') renderHeavyRotation(); });
   setInterval(() => {
     const audio = el.nativeAudio;
     const t = state.currentTrack;
@@ -19458,6 +19520,106 @@ function bindCoverHoldZoom(wrapEl) {
   }
 
   updateFxTags();
+
+  // ---- Dock quick actions: Presets popover and Add to playlist dropdown (both open above their button) ----
+  let dockMenu = null;
+  function closeDockMenu() {
+    if (!dockMenu) return;
+    if (dockMenu._anchor) dockMenu._anchor.classList.remove('active');
+    dockMenu.remove();
+    dockMenu = null;
+    document.removeEventListener('pointerdown', onDockMenuOutside, true);
+  }
+  function onDockMenuOutside(e) {
+    if (dockMenu && !dockMenu.contains(e.target) && !(dockMenu._anchor && dockMenu._anchor.contains(e.target))) closeDockMenu();
+  }
+  function openDockMenu(anchor, extraClass, html, onPick) {
+    const sameAnchor = dockMenu && dockMenu._anchor === anchor;
+    closeDockMenu();
+    if (sameAnchor) return;
+    const menu = document.createElement('div');
+    menu.className = `ob-fx-menu sl-dock-menu ${extraClass}`;
+    menu.setAttribute('role', 'menu');
+    menu._anchor = anchor;
+    menu.innerHTML = html;
+    menu.addEventListener('click', (e) => onPick(e, menu));
+    document.body.appendChild(menu);
+    const r = anchor.getBoundingClientRect();
+    const mw = menu.offsetWidth;
+    const mh = menu.offsetHeight;
+    menu.style.left = `${Math.max(8, Math.min(window.innerWidth - mw - 8, r.left + r.width / 2 - mw / 2))}px`;
+    menu.style.top = `${Math.max(8, r.top - mh - 12)}px`;
+    anchor.classList.add('active');
+    dockMenu = menu;
+    document.addEventListener('pointerdown', onDockMenuOutside, true);
+  }
+  window.addEventListener('resize', closeDockMenu);
+  window.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeDockMenu(); });
+
+  // Presets: the same four as the song-row menu plus your own; picking the active one again goes back to Original.
+  function dockPresetItems() {
+    const own = (state.customPresets || []).map((p) => ({ id: p.id, label: p.name || 'Custom preset' }));
+    return [...ROW_FX_PRESETS, ...own];
+  }
+  const dockPresetsBtn = document.getElementById('btn-ob-presets');
+  if (dockPresetsBtn) {
+    dockPresetsBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const html = `<div class="sl-dock-menu-head">Presets</div>` + dockPresetItems().map((p) =>
+        `<button type="button" role="menuitemradio" data-preset="${escapeHtml(p.id)}" class="${state.activePresetId === p.id ? 'is-active' : ''}">${escapeHtml(p.label)}</button>`
+      ).join('');
+      openDockMenu(dockPresetsBtn, 'sl-presets-menu', html, (ev, menu) => {
+        const b = ev.target.closest('button[data-preset]');
+        if (!b) return;
+        let id = b.dataset.preset;
+        if (id === state.activePresetId && id !== 'p_default') id = 'p_default';
+        const preset = getAllPresets().find((p) => p.id === id);
+        if (!preset) return;
+        applyPreset(preset);
+        updateFxTags();
+        menu.querySelectorAll('button[data-preset]').forEach((x) => x.classList.toggle('is-active', x.dataset.preset === state.activePresetId));
+      });
+    });
+  }
+
+  // Add to playlist: every playlist, one click adds the playing song (a check marks the ones that already have it).
+  const dockAddBtn = document.getElementById('btn-ob-addto');
+  if (dockAddBtn) {
+    dockAddBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const track = state.currentTrack;
+      if (!track) { closeDockMenu(); showToast('Play a song first', 'info'); return; }
+      const pls = (state.playlists || []).filter((p) => p && p.id);
+      const has = (pl) => Array.isArray(pl.tracks) && pl.tracks.some((t) => isSameTrack(t, track));
+      const html = `<div class="sl-dock-menu-head">Add to playlist</div>` + (pls.length
+        ? `<div class="sl-dock-list">${pls.map((pl) => `<button type="button" role="menuitem" data-pl="${escapeHtml(pl.id)}" class="${has(pl) ? 'is-in' : ''}">
+            <span class="sl-dock-pl-name">${escapeHtml(pl.name || 'Untitled')}</span>
+            <span class="sl-dock-pl-meta">${(pl.tracks || []).length}</span>
+            <span class="sl-dock-check" aria-hidden="true"></span>
+          </button>`).join('')}</div>`
+        : `<p class="sl-dock-empty">No playlists yet. Make one with the + next to Playlists.</p>`);
+      openDockMenu(dockAddBtn, 'sl-addto-menu', html, (ev, menu) => {
+        const b = ev.target.closest('button[data-pl]');
+        if (!b) return;
+        const pl = state.playlists.find((p) => p.id === b.dataset.pl);
+        const cur = state.currentTrack;
+        if (!pl || !cur) return;
+        if (!Array.isArray(pl.tracks)) pl.tracks = [];
+        if (pl.tracks.some((t) => isSameTrack(t, cur))) { showToast(`Already in "${pl.name}"`, 'info'); return; }
+        const copy = {};
+        Object.keys(cur).forEach((k) => { if (!k.startsWith('_')) copy[k] = cur[k]; });
+        pl.tracks.push(stampAddedAt(copy));
+        localStorage.setItem('devsize_playlists', JSON.stringify(state.playlists));
+        renderPlaylistsList();
+        if (state.currentView === 'playlist-detail' && state.currentPlaylistId === pl.id) openPlaylistDetail(pl.id);
+        b.classList.add('is-in');
+        const meta = b.querySelector('.sl-dock-pl-meta');
+        if (meta) meta.textContent = String(pl.tracks.length);
+        showToast(`Added to "${pl.name}"`, 'success');
+        setTimeout(closeDockMenu, 650);
+      });
+    });
+  }
 
   function applyWelcomeResult(d) {
     if (!d) return;
@@ -26926,6 +27088,84 @@ function bindCoverHoldZoom(wrapEl) {
 
   function applyCoverTintToCard() {}
 
+  // Home "Heavy rotation" row (in the old Jump back in spot): your most played songs, from Soul Playback's plays
+  // and listening time. Before there's any Soul Playback data it falls back to the rank counters' listening time.
+  function renderHeavyRotation() {
+    const sec = document.getElementById('sp-quick-sec');
+    const container = document.getElementById('sp-quick');
+    if (!sec || !container) return;
+    let list = (window.SoulPlayback && window.SoulPlayback.heavyRotation) ? window.SoulPlayback.heavyRotation(12) : [];
+    if (!list.length) {
+      list = (state.history || [])
+        .map((t) => Object.assign({}, t, { _slSecs: statSeconds(`song:${getTrackCanonicalId(t)}`) }))
+        .filter((t) => t._slSecs >= 30)
+        .sort((a, b) => b._slSecs - a._slSecs)
+        .slice(0, 12);
+    }
+    list = list.filter((t) => t && !isTrackBlocked(t) && !isArtistBlocked(t.artist));
+    sec.hidden = list.length === 0;
+    const scroll = container.scrollLeft;
+    container.innerHTML = '';
+    const playable = list.map((t) => {
+      const c = {};
+      Object.keys(t).forEach((k) => { if (!k.startsWith('_sl')) c[k] = t[k]; });
+      return c;
+    });
+    list.forEach((track, idx) => {
+      const tile = document.createElement('div');
+      tile.className = 'sp-tile';
+      const thumb = (typeof getTrackThumbUrl === 'function' ? getTrackThumbUrl(track) : '') || track._slArt || track.thumbnail || track.cover || '';
+      applyCoverTintToCard(tile, thumb);
+      const tileCover = document.createElement('div');
+      tileCover.className = 'sp-tile-cover';
+      appendCoverImage(tileCover, thumb);
+      tile.appendChild(tileCover);
+      const text = document.createElement('div');
+      text.className = 'sp-tile-text';
+      const title = document.createElement('div');
+      title.className = 'sp-tile-title sp-fade';
+      title.textContent = track.title || 'Untitled';
+      const sub = document.createElement('div');
+      sub.className = 'sp-tile-sub sp-fade';
+      const plays = track._slPlays || 0;
+      sub.textContent = plays ? `${plays} ${plays === 1 ? 'play' : 'plays'} · ${track.artist || 'Unknown artist'}` : (track.artist || 'Unknown artist');
+      text.appendChild(title);
+      text.appendChild(sub);
+      tile.appendChild(text);
+      tile.addEventListener('click', () => {
+        state.isRadioQueue = false;
+        playTrack(playable[idx], [...playable], idx);
+      });
+      container.appendChild(tile);
+    });
+    container.scrollLeft = scroll;
+  }
+
+  // Home glow: taken from the first "For you" card's cover and kept until that cover changes (a refresh), so the
+  // Home lighting stays put while songs change. soulleak.css swaps these in for the song colors on Home.
+  let homeAmbientUrl = '';
+  async function syncHomeAmbientFromForYou() {
+    const img = document.querySelector('#sp-made .sp-card .sp-card-cover img');
+    const url = (img && (img.currentSrc || img.src)) || '';
+    if (!url || url === homeAmbientUrl) return;
+    homeAmbientUrl = url;
+    try {
+      const [a, b] = await getCoverDominantColors(url);
+      if (homeAmbientUrl !== url) return;
+      document.body.style.setProperty('--sl-home-1', ambientColor(a, 'rgb(139, 92, 246)'));
+      document.body.style.setProperty('--sl-home-2', ambientColor(b || a, 'rgb(99, 102, 241)'));
+      document.body.classList.add('sl-home-amb');
+    } catch (_) {}
+  }
+  const spMadeRow = document.getElementById('sp-made');
+  if (spMadeRow) {
+    let homeAmbTimer = null;
+    new MutationObserver(() => {
+      clearTimeout(homeAmbTimer);
+      homeAmbTimer = setTimeout(syncHomeAmbientFromForYou, 300);
+    }).observe(spMadeRow, { childList: true, subtree: true, attributes: true, attributeFilter: ['src'] });
+  }
+
   function renderQuickAccess() {
     const sec = document.getElementById('sp-quick-sec');
     const container = document.getElementById('sp-quick');
@@ -27629,7 +27869,8 @@ function bindCoverHoldZoom(wrapEl) {
 
   function renderSpotifyHome() {
     if (window.SoulPlayback) window.SoulPlayback.renderHero();
-    renderQuickAccess();
+    // Soulleak: Heavy rotation (most played) replaces Jump back in.
+    renderHeavyRotation();
     // Soulleak: the row that showed Trending now shows your listening history.
     renderHomeHistory();
     renderMadeForYou();

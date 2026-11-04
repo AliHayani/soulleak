@@ -1,6 +1,6 @@
 {
   "name": "soulleak",
-  "version": "1.0.9",
+  "version": "1.1.0",
   "main": "src/main/main.js",
   "bin": {
     "soulleak": "src/main/cli.js"

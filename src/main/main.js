@@ -1331,13 +1331,17 @@ function runGUI() {
       ipcMain.handle('account-export', async (event, payload) => {
         try {
           const win = BrowserWindow.fromWebContents(event.sender) || mainWindow;
+          // The renderer can suggest a file name (the account's name); it isn't part of the saved data.
+          const data = Object.assign({}, payload || {});
+          const suggested = String(data.suggestedName || 'soulleak-account').replace(/[\\/:*?"<>|]+/g, '').trim().slice(0, 60) || 'soulleak-account';
+          delete data.suggestedName;
           const r = await dialog.showSaveDialog(win, {
             title: 'Export Soulleak account',
-            defaultPath: 'soulleak-account.rfacc',
+            defaultPath: `${suggested}.rfacc`,
             filters: [{ name: 'Soulleak account backup (.rfacc)', extensions: ['rfacc'] }]
           });
           if (r.canceled || !r.filePath) return { canceled: true };
-          const buffer = encryptAccount(payload || {});
+          const buffer = encryptAccount(data);
           await fs.promises.writeFile(r.filePath, buffer);
           return { success: true, filePath: r.filePath };
         } catch (err) {

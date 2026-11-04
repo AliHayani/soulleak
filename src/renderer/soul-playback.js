@@ -103,6 +103,8 @@
   }
 
   function flush() {
+    // Mid account switch (accounts.js): the database already holds the next account.
+    if (window.__slSwitching) return;
     if (!db || !dirty.size) return;
     try {
       const store = db.transaction(STORE, 'readwrite').objectStore(STORE);
@@ -284,6 +286,33 @@
     const set = new Set([monthKey(new Date())]);
     months.forEach((b, m) => { if (b.totalSeconds > 0) set.add(m); });
     return [...set].sort().reverse();
+  }
+
+  // Heavy rotation: your most played songs, from plays and time across recent months. This month counts in full,
+  // last month at 60%, older months at 30%, so it follows what you're into now. Returns playable track objects
+  // with playCount / secondsListened attached.
+  function heavyRotation(n = 10) {
+    const cur = monthKey(new Date());
+    const d = new Date();
+    d.setMonth(d.getMonth() - 1);
+    const prev = monthKey(d);
+    const agg = new Map();
+    months.forEach((b, m) => {
+      const w = m === cur ? 1 : m === prev ? 0.6 : 0.3;
+      Object.values(b.tracks || {}).forEach((t) => {
+        if (!t || !(t.playCount > 0)) return;
+        const a = agg.get(t.id) || { t, score: 0, plays: 0, secs: 0 };
+        a.score += (t.playCount * 180 + t.secondsListened) * w;
+        a.plays += t.playCount;
+        a.secs += t.secondsListened;
+        if (m === cur || !a.t.track) a.t = t;
+        agg.set(t.id, a);
+      });
+    });
+    return [...agg.values()].sort((x, y) => y.score - x.score).slice(0, n).map(({ t, plays, secs }) => {
+      const base = t.track && t.track.id ? t.track : { id: t.id, title: t.title, artist: t.artist, platform: t.platform, url: t.sourceUrl, thumbnail: t.artwork };
+      return Object.assign({}, base, { _slPlays: plays, _slSecs: secs, _slArt: t.artwork || '' });
+    });
   }
 
   // Twelve monthly records summed: the base for a yearly recap later.
@@ -478,6 +507,15 @@
         // Keep the Resume card's Play / Pause state in step with the player.
         const audio = document.getElementById('native-audio');
         if (audio) ['play', 'pause', 'loadeddata'].forEach((ev) => audio.addEventListener(ev, () => { if (homeVisible()) renderHero(); }));
+        // Whenever the sidebar rank card updates (progress, rank up), the hero follows.
+        const level = document.getElementById('ob-level');
+        if (level) {
+          let pending = null;
+          new MutationObserver(() => {
+            if (pending) return;
+            pending = setTimeout(() => { pending = null; if (homeVisible()) renderHero(); }, 250);
+          }).observe(level, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['style'] });
+        }
       }
     };
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', wire, { once: true });
@@ -516,7 +554,14 @@
     // The rank comes from the sidebar card, which the rank system keeps up to date.
     const text = (id) => { const e = document.getElementById(id); return e ? e.textContent.trim() : ''; };
     const fillEl = document.getElementById('ob-level-fill');
-    const fill = fillEl && fillEl.style.width ? fillEl.style.width : '0%';
+    // The sidebar bar is filled with transform: scaleX(f), not a width; turn that into a percentage.
+    let pct = 0;
+    if (fillEl) {
+      const m = /scaleX\(\s*([\d.]+)\s*\)/.exec(fillEl.style.transform || '');
+      if (m) pct = parseFloat(m[1]) * 100;
+      else if (fillEl.style.width) pct = parseFloat(fillEl.style.width) || 0;
+    }
+    const fill = `${Math.max(0, Math.min(100, Math.round(pct * 10) / 10))}%`;
     const emblemEl = document.getElementById('ob-level-emblem');
     // The copy gets its own gradient ids: the sidebar card can be hidden (icon rail), and gradients defined
     // inside a hidden element don't paint.
@@ -542,7 +587,8 @@
         </button>`;
     }
 
-    hero.innerHTML = `<div class="sl-hero-main">
+    hero.innerHTML = `<div class="sl-hero-fx" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></div>
+      <div class="sl-hero-main">
         <h1 class="sl-hero-title">${greeting()}</h1>
         <div class="sl-hero-stats">
           <button type="button" class="sl-hero-rank" data-sl-hero="rank" title="Open your ranks and badges">
@@ -585,6 +631,7 @@
     open,
     render,
     renderHero,
+    heavyRotation,
     // For a yearly recap later: monthly records and a sum over a year.
     months: () => new Map(months),
     year: yearBucket,

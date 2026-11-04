@@ -3548,7 +3548,9 @@ body.theme-dark #sp-home #sp-quick .sp-tile {
   padding: 26px 26px 24px;
   border-radius: 18px;
   border: 1px solid var(--sl-edge, rgba(139, 92, 246, 0.18));
-  background: linear-gradient(120deg, rgba(124, 58, 237, 0.14), rgba(5, 5, 8, 0) 55%), #08080d;
+  /* See-through, so the song's ambient light (on #main-content) shows behind it. */
+  background: linear-gradient(120deg, rgba(124, 58, 237, 0.12), rgba(5, 5, 8, 0) 55%), rgba(8, 8, 13, 0.42);
+  backdrop-filter: blur(18px);
 }
 .sl-hero:empty { display: none; }
 .sl-hero-main { min-width: 0; display: flex; flex-direction: column; justify-content: space-between; gap: 18px; }
@@ -3872,3 +3874,212 @@ body.theme-dark #sp-home .sp-row, body.theme-dark #sp-home #sp-quick { cursor: g
 body.theme-dark #sp-home .sl-dragging { cursor: grabbing !important; scroll-snap-type: none !important; scroll-behavior: auto !important; user-select: none; }
 body.theme-dark #sp-home .sl-dragging * { pointer-events: none; }
 body.theme-dark #sp-home .sp-row img, body.theme-dark #sp-home #sp-quick img { -webkit-user-drag: none; }
+
+/* =====================================================================
+   Ambient glow: the playing song's cover colors (app.js updateSoulAmbient)
+   as a soft aura behind the main view, on top of the pitch-black panel.
+   Registered properties so the colors fade between songs instead of jumping.
+   ===================================================================== */
+@property --sl-amb-1 { syntax: '<color>'; inherits: true; initial-value: rgb(139, 92, 246); }
+@property --sl-amb-2 { syntax: '<color>'; inherits: true; initial-value: rgb(99, 102, 241); }
+@property --sl-amb-a { syntax: '<number>'; inherits: true; initial-value: 0; }
+
+body.theme-dark.sl-ambient-on { --sl-amb-a: 1; }
+
+body.theme-dark:not(.cover-bg-on):not(.has-video-bg) #main-content {
+  background:
+    radial-gradient(70% 60% at 14% 6%, color-mix(in srgb, var(--sl-amb-1) calc(42% * var(--sl-amb-a)), transparent), transparent 72%),
+    radial-gradient(60% 55% at 92% 18%, color-mix(in srgb, var(--sl-amb-2) calc(30% * var(--sl-amb-a)), transparent), transparent 72%),
+    radial-gradient(70% 50% at 50% 105%, color-mix(in srgb, var(--sl-amb-1) calc(16% * var(--sl-amb-a)), transparent), transparent 70%),
+    radial-gradient(120% 60% at 15% -10%, rgba(139, 92, 246, 0.08), transparent 60%),
+    var(--sl-black) !important;
+  transition: --sl-amb-1 1.4s ease, --sl-amb-2 1.4s ease, --sl-amb-a 0.9s ease;
+}
+
+/* The lyrics panel (when open) picks up a quieter version of the same light. */
+body.theme-dark:not(.cover-bg-on):not(.has-video-bg) #right-panel {
+  background:
+    radial-gradient(120% 50% at 50% -5%, color-mix(in srgb, var(--sl-amb-1) calc(22% * var(--sl-amb-a)), transparent), transparent 70%),
+    var(--sl-black) !important;
+  transition: --sl-amb-1 1.4s ease, --sl-amb-a 0.9s ease;
+}
+
+/* ---- Dock quick actions (Presets, Add to playlist) ---- */
+.sl-dock-menu { min-width: 200px; padding: 6px; border-radius: 12px; border-color: rgba(139, 92, 246, 0.3); }
+.sl-dock-menu-head { padding: 6px 10px 6px; font-size: 11.5px; font-weight: 700; color: var(--md-sys-color-on-surface-variant); }
+.sl-addto-menu { width: 260px; }
+.sl-dock-list { display: flex; flex-direction: column; max-height: 280px; overflow-y: auto; scrollbar-width: thin; }
+.sl-addto-menu button[data-pl] { display: flex; align-items: center; gap: 10px; height: 36px; text-align: left; }
+.sl-dock-pl-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sl-dock-pl-meta { flex: none; font-size: 11.5px; color: var(--md-sys-color-on-surface-variant); font-variant-numeric: tabular-nums; }
+.sl-dock-check { flex: none; width: 16px; height: 16px; }
+.sl-addto-menu button.is-in .sl-dock-check {
+  background: #8b5cf6;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7.5'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7.5'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+.sl-dock-empty { margin: 4px 10px 8px; font-size: 12.5px; line-height: 1.45; color: var(--md-sys-color-on-surface-variant); }
+body.theme-dark #playbar #btn-ob-presets.active,
+body.theme-dark #playbar #btn-ob-addto.active { color: #fff; background: rgba(139, 92, 246, 0.22); }
+
+/* Dock room for the new buttons: the legacy right-panel queue button is hidden (Up Next replaced that panel),
+   and the tool icons are a touch smaller. */
+body.theme-dark #playbar #btn-toggle-queue-panel { display: none !important; }
+body.theme-dark #playbar .playbar-right .btn-icon-pill { width: 32px !important; height: 32px !important; min-width: 32px !important; }
+body.theme-dark #playbar .playbar-left #btn-toggle-fav,
+body.theme-dark #playbar .playbar-left #btn-ob-addto { width: 32px !important; height: 32px !important; min-width: 32px !important; flex: none; }
+body.theme-dark:not(.classic-sidebar):not(.mini) #playbar { column-gap: 16px !important; }
+
+.sl-dock-list { overflow-x: hidden !important; scrollbar-color: rgba(255, 255, 255, 0.16) transparent; }
+.sl-dock-list button { width: 100%; min-width: 0; box-sizing: border-box; }
+.sl-dock-list { flex: none; }
+.sl-dock-list button { margin: 0 !important; }
+/* A global rule gives buttons an invisible ::after hit area 10px past their edges; inside a scroll list that
+   creates scrollbars, so keep it within the row. */
+.sl-dock-list button::after { inset: 0 !important; }
+
+/* ---- Hero ambient motion: two slow violet auras and a few drifting motes. Only transform and opacity animate,
+   so the GPU does it on its own (no layout, no repaint). Off for "reduce motion". ---- */
+.sl-hero { position: relative; overflow: hidden; isolation: isolate; }
+.sl-hero > .sl-hero-main, .sl-hero > .sl-resume { position: relative; z-index: 1; }
+.sl-hero-fx { position: absolute; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
+.sl-hero-fx::before,
+.sl-hero-fx::after {
+  content: '';
+  position: absolute;
+  border-radius: 50%;
+  will-change: transform, opacity;
+}
+.sl-hero-fx::before {
+  width: 420px;
+  height: 420px;
+  left: -120px;
+  top: -200px;
+  background: radial-gradient(circle, rgba(139, 92, 246, 0.42), rgba(139, 92, 246, 0) 65%);
+  animation: slHeroAuraA 16s ease-in-out infinite alternate;
+}
+.sl-hero-fx::after {
+  width: 360px;
+  height: 360px;
+  right: 18%;
+  bottom: -230px;
+  background: radial-gradient(circle, rgba(99, 102, 241, 0.32), rgba(99, 102, 241, 0) 65%);
+  animation: slHeroAuraB 21s ease-in-out infinite alternate;
+}
+@keyframes slHeroAuraA {
+  0% { transform: translate3d(0, 0, 0) scale(1); opacity: 0.75; }
+  50% { transform: translate3d(90px, 40px, 0) scale(1.12); opacity: 1; }
+  100% { transform: translate3d(180px, 10px, 0) scale(0.95); opacity: 0.7; }
+}
+@keyframes slHeroAuraB {
+  0% { transform: translate3d(0, 0, 0) scale(1); opacity: 0.6; }
+  50% { transform: translate3d(-110px, -30px, 0) scale(1.18); opacity: 0.95; }
+  100% { transform: translate3d(-40px, -60px, 0) scale(1.02); opacity: 0.65; }
+}
+.sl-hero-fx i {
+  position: absolute;
+  bottom: -8px;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: #c4b5fd;
+  box-shadow: 0 0 6px rgba(196, 181, 253, 0.8);
+  opacity: 0;
+  will-change: transform, opacity;
+  animation: slHeroMote 12s linear infinite;
+}
+.sl-hero-fx i:nth-child(1) { left: 8%; animation-delay: 0s; animation-duration: 13s; }
+.sl-hero-fx i:nth-child(2) { left: 22%; animation-delay: -4s; animation-duration: 11s; }
+.sl-hero-fx i:nth-child(3) { left: 38%; animation-delay: -8s; animation-duration: 15s; }
+.sl-hero-fx i:nth-child(4) { left: 55%; animation-delay: -2s; animation-duration: 12s; width: 2px; height: 2px; }
+.sl-hero-fx i:nth-child(5) { left: 71%; animation-delay: -6s; animation-duration: 14s; }
+.sl-hero-fx i:nth-child(6) { left: 88%; animation-delay: -10s; animation-duration: 10s; width: 2px; height: 2px; }
+@keyframes slHeroMote {
+  0% { transform: translate3d(0, 0, 0); opacity: 0; }
+  12% { opacity: 0.75; }
+  80% { opacity: 0.45; }
+  100% { transform: translate3d(14px, -230px, 0); opacity: 0; }
+}
+/* Runs even with Windows "Animation effects" off (prefers-reduced-motion): it's slow, GPU-only drift that was
+   asked for on purpose. The app's own Reduce motion setting still stops it (html.force-reduced-motion). */
+html.force-reduced-motion .sl-hero-fx::before,
+html.force-reduced-motion .sl-hero-fx::after,
+html.force-reduced-motion .sl-hero-fx i { animation: none !important; }
+
+/* ---- Home lighting: on Home the glow comes from the first "For you" cover (locked until a refresh),
+   everywhere else from the playing song. ---- */
+body.theme-dark.sl-home-amb #main-content:has(#view-discover.active) {
+  --sl-amb-1: var(--sl-home-1);
+  --sl-amb-2: var(--sl-home-2);
+  --sl-amb-a: 1;
+}
+
+/* ---- Settings > Account: Accounts panel (accounts.js) ---- */
+.sl-accounts {
+  margin: 0 0 16px;
+  padding: 18px 20px 16px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: #0a0a0f;
+}
+.sl-acc-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+.sl-acc-title { margin: 0; font-family: var(--sl-display, inherit); font-size: 17px; font-weight: 750; letter-spacing: -0.01em; color: #fff; }
+.sl-acc-sub { margin: 3px 0 0; font-size: 12.5px; color: var(--md-sys-color-on-surface-variant); }
+.sl-acc-list { display: flex; flex-direction: column; }
+.sl-acc-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 4px;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+.sl-acc-row:first-child { border-top: 0; }
+.sl-acc-avatar { width: 40px; height: 40px; flex: none; border-radius: 50%; object-fit: cover; background: #17151f; }
+.sl-acc-row.is-active .sl-acc-avatar { box-shadow: 0 0 0 2px #0a0a0f, 0 0 0 3px rgba(139, 92, 246, 0.6); }
+.sl-acc-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.sl-acc-name {
+  width: 100%;
+  padding: 0;
+  border: 0;
+  border-bottom: 1px dashed transparent;
+  background: none;
+  color: #fff;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 650;
+  outline: none;
+  text-overflow: ellipsis;
+}
+.sl-acc-name:hover { border-bottom-color: rgba(255, 255, 255, 0.15); }
+.sl-acc-name:focus { border-bottom-color: rgba(139, 92, 246, 0.6); }
+.sl-acc-meta { font-size: 12px; color: var(--md-sys-color-on-surface-variant); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sl-acc-badge { flex: none; padding: 3px 9px; border-radius: 999px; background: rgba(139, 92, 246, 0.16); color: #c4b5fd; font-size: 11.5px; font-weight: 700; }
+.sl-acc-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  height: 34px;
+  padding: 0 14px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.035);
+  color: #fff;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 650;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.sl-acc-btn:hover { background: rgba(255, 255, 255, 0.07); border-color: rgba(255, 255, 255, 0.14); }
+.sl-acc-btn:disabled { opacity: 0.6; cursor: default; }
+.sl-acc-btn.primary { border-color: transparent; background: var(--sl-violet, #7c3aed); }
+.sl-acc-btn.primary:hover { background: #8b5cf6; }
+.sl-acc-btn.ghost { width: 34px; padding: 0; justify-content: center; border-color: transparent; background: none; color: var(--md-sys-color-on-surface-variant); }
+.sl-acc-btn.ghost:hover { color: #fca5a5; background: rgba(255, 255, 255, 0.05); }
+.sl-acc-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; padding-top: 14px; border-top: 1px solid rgba(255, 255, 255, 0.05); }
+.sl-acc-empty { margin: 6px 0; font-size: 13px; color: var(--md-sys-color-on-surface-variant); }
+
+/* The old Import row replaced everything; the Accounts panel adds accounts instead, and exports with ranks. */
+#settings-section-account .setting-item:has(#btn-acc-import-rfacc),
+#settings-section-account .setting-item:has(#btn-acc-export-rfacc) { display: none !important; }
