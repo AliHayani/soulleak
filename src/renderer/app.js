@@ -1895,6 +1895,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                           navHistory: document.getElementById('nav-history'),
                           navQueue: document.getElementById('nav-queue'),
                           navSoul: document.getElementById('nav-soul'),
+                          navPlayback: document.getElementById('nav-playback'),
                           navSettings: document.getElementById('nav-settings'),
                           favoritesCount: document.getElementById('favorites-count'),
                           albumsCount: document.getElementById('albums-count'),
@@ -1925,6 +1926,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                           viewHistory: document.getElementById('view-history'),
                           viewQueue: document.getElementById('view-queue'),
                           viewSoul: document.getElementById('view-soul'),
+                          viewPlayback: document.getElementById('view-playback'),
                           viewPlaylistDetail: document.getElementById('view-playlist-detail'),
                           viewAlbum: document.getElementById('view-album'),
                           viewArtist: document.getElementById('view-artist'),
@@ -14024,18 +14026,19 @@ function renderClickableArtists(container, rawArtist, hintTrack = null) {
 
     const applyView = () => {
       document.querySelectorAll('.no-enter-anim').forEach(c => c.classList.remove('no-enter-anim'));
-      [el.viewDiscover, el.viewSoul, el.viewFavorites, el.viewAlbums, el.viewLocal, el.viewHistory, el.viewQueue, el.viewPlaylistDetail, el.viewAlbum, el.viewArtist].forEach(v => {
+      [el.viewDiscover, el.viewSoul, el.viewPlayback, el.viewFavorites, el.viewAlbums, el.viewLocal, el.viewHistory, el.viewQueue, el.viewPlaylistDetail, el.viewAlbum, el.viewArtist].forEach(v => {
         if (v) v.classList.remove('active');
       });
 
         const nestedView = viewName === 'playlist-detail' || viewName === 'album' || viewName === 'artist';
         if (!nestedView) {
-          [el.navDiscover, el.navSoul, el.navFavorites, el.navAlbums, el.navLocal, el.navHistory, el.navQueue, el.navSettings].forEach(n => {
+          [el.navDiscover, el.navSoul, el.navPlayback, el.navFavorites, el.navAlbums, el.navLocal, el.navHistory, el.navQueue, el.navSettings].forEach(n => {
             if (n) n.classList.remove('active');
           });
           const navMap = {
             discover: el.navDiscover,
             soul: el.navSoul,
+            playback: el.navPlayback,
             favorites: el.navFavorites,
             albums: el.navAlbums,
             local: el.navLocal,
@@ -14057,6 +14060,10 @@ function renderClickableArtists(container, rawArtist, hintTrack = null) {
             if (el.viewSoul) el.viewSoul.classList.add('active');
             if (el.navSoul) el.navSoul.classList.add('active');
             openSoulSearchView();
+          } else if (viewName === 'playback') {
+            if (el.viewPlayback) el.viewPlayback.classList.add('active');
+            if (el.navPlayback) el.navPlayback.classList.add('active');
+            if (window.SoulPlayback) window.SoulPlayback.open();
           } else if (viewName === 'favorites') {
             if (el.viewFavorites) el.viewFavorites.classList.add('active');
             if (el.navFavorites) el.navFavorites.classList.add('active');
@@ -14413,6 +14420,7 @@ function updateNavIndicator(animate) {
   });
 
   if (el.navSoul) el.navSoul.addEventListener('click', () => openSoulSearchWithTransition(el.navSoul));
+  if (el.navPlayback) el.navPlayback.addEventListener('click', () => switchView('playback'));
 
   // Entering Soul Search: the page you were on sinks back while Soul Search pours in from the button you pressed.
   function openSoulSearchWithTransition(fromEl) {
@@ -19142,8 +19150,51 @@ function bindCoverHoldZoom(wrapEl) {
     });
   }
 
+  // Soul Playback (soul-playback.js): monthly recap. It gets what it needs from the app through this adapter.
+  if (window.SoulPlayback) {
+    const httpArt = (u) => (typeof u === 'string' && /^https?:\/\//i.test(u) ? u : '');
+    window.SoulPlayback.attach({
+      describe: (t) => {
+        const primary = primaryArtist(t);
+        const custom = getTrackArt(t);
+        return {
+          id: getTrackCanonicalId(t),
+          title: t.title || 'Untitled',
+          artist: stripYoutubeTopic(t.artist || '') || 'Unknown artist',
+          primaryArtist: primary,
+          artistKey: primary ? primary.toLowerCase() : '',
+          artwork: httpArt(custom && custom.cover) || httpArt(t.thumbnail) || httpArt(t.cover),
+          sourceUrl: buildShareUrl(t),
+          platform: t.platform || state.platform || '',
+        };
+      },
+      songSeconds: (t) => statSeconds(`song:${getTrackCanonicalId(t)}`),
+      history: () => state.history || [],
+      artistAvatar: (name) => {
+        const cache = safeJson('riff_artist_meta_cache', {});
+        const hit = cache[String(name || '').toLowerCase().trim()];
+        return (hit && httpArt(hit.avatar)) || '';
+      },
+      sameArtist: (trackArtist, name) => primaryArtist({ artist: trackArtist }).toLowerCase() === String(name || '').toLowerCase(),
+      playList: (list, index) => playTrack(list[index], list, index),
+      savePlaylist: (name, tracks, cover) => {
+        const existing = state.playlists.find((p) => p && p.name === name);
+        if (existing) {
+          existing.tracks = tracks.map((t) => stampAddedAt(t));
+          if (cover) existing.cover = cover;
+          localStorage.setItem('devsize_playlists', JSON.stringify(state.playlists));
+          renderPlaylistsList();
+          return 'updated';
+        }
+        return createPlaylist(name, tracks, cover, { open: false }) ? 'created' : '';
+      },
+      openArtist: (name) => openArtistProfile(name),
+      toast: (msg, type) => showToast(msg, type),
+    });
+  }
+
   renderListenLevel();
-  loadStats();
+  loadStats().then(() => { if (window.SoulPlayback) window.SoulPlayback.ready(); });
   setInterval(() => {
     const audio = el.nativeAudio;
     const t = state.currentTrack;
@@ -19152,6 +19203,7 @@ function bindCoverHoldZoom(wrapEl) {
     const artist = primaryArtist(t);
     if (artist) bumpStat(`artist:${artist.toLowerCase()}`, 1, artist);
     bumpStat(`song:${getTrackCanonicalId(t)}`, 1, `${t.title || 'Untitled'}${artist ? ` by ${artist}` : ''}`);
+    if (window.SoulPlayback) window.SoulPlayback.tick(t, audio.currentTime);
     statsTicks += 1;
     if (statsTicks % 10 === 0) renderListenLevel();
     if (statsTicks % 5 === 0 && badgesPageOpen()) renderBadgesPage();
@@ -19275,6 +19327,7 @@ function bindCoverHoldZoom(wrapEl) {
       const total = Number(ms) || 2000;
       if (document.querySelector('.ob-exit')) return;
       flushStats();
+      if (window.SoulPlayback) window.SoulPlayback.flush();
       closeStallPrompt();
       if (window.SoulleakLT) window.SoulleakLT.leave(true);
       windDownAudio(total);
@@ -28657,11 +28710,12 @@ function bindCoverHoldZoom(wrapEl) {
     });
   }
 
-  const DEFAULT_SIDEBAR_ORDER = ['discover', 'soul', 'favorites', 'albums', 'local', 'history', 'queue'];
+  const DEFAULT_SIDEBAR_ORDER = ['discover', 'soul', 'playback', 'favorites', 'albums', 'local', 'history', 'queue'];
 
   const SIDEBAR_ITEM_DEFS = {
     discover: { name: 'Home', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>' },
     soul: { name: 'Soul Search', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.5 3.5S4.5 10 4.5 14.5a6 6 0 0 0 12 0c0-4.5-6-11-6-11Z"/><path d="M19.5 2.5v4M17.5 4.5h4"/></svg>' },
+    playback: { name: 'Soul Playback', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 12a8.5 8.5 0 1 0 2.6-6.1"/><path d="M3 3.5v4h4"/><path d="M9.5 15.5v-3M12.5 15.5v-6M15.5 15.5v-4"/></svg>' },
     favorites: { name: 'Favorites', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>' },
     albums: { name: 'Albums', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg>' },
     local: { name: 'My files', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>' },

@@ -444,6 +444,17 @@
           </button>
         </form>
 
+        <button class="nav-item" data-view="playback" id="nav-playback" title="Soul Playback">
+          <div class="nav-indicator">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3.5 12a8.5 8.5 0 1 0 2.6-6.1"></path>
+              <path d="M3 3.5v4h4"></path>
+              <path d="M9.5 15.5v-3M12.5 15.5v-6M15.5 15.5v-4"></path>
+            </svg>
+          </div>
+          <span class="nav-item-label" data-i18n>Soul Playback</span>
+        </button>
+
         <button class="nav-item" data-view="favorites" id="nav-favorites" title="Favorites">
           <div class="nav-indicator">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -690,6 +701,10 @@
           <div class="soul-status" id="soul-status" aria-live="polite"></div>
           <div class="soul-grid" id="soul-results"></div>
         </div>
+      </section>
+
+      <section class="content-view" id="view-playback">
+        <div id="slpb-root"></div>
       </section>
 
       <section class="content-view" id="view-favorites">
@@ -4474,6 +4489,7 @@
   <script src="track-sort.js"></script>
   <script src="../../assets/peerjs.min.js"></script>
   <script src="listen-together.js"></script>
+  <script src="soul-playback.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
