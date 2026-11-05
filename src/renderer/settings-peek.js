@@ -106,7 +106,8 @@
   }, true);
 
   // ---- toggles, dropdown options, theme swatches and presets ----
-  const PEEK_CLICK = '.effect-switch-btn, .m3-dropdown-option, .theme-mode-btn, .theme-swatch, .app-icon-option, .preset-chip';
+  // (App icon choices don't change the window, so they don't fade it.)
+  const PEEK_CLICK = '.effect-switch-btn, .m3-dropdown-option, .theme-mode-btn, .theme-swatch, .preset-chip';
   document.addEventListener('click', (e) => {
     const b = e.target.closest && e.target.closest(PEEK_CLICK);
     if (!b || !visualControl(b)) return;

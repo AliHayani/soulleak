@@ -1621,6 +1621,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   // (soulleak.css paints it from --sl-amb-1 / --sl-amb-2 and fades between songs).
   // A cover's dominant colors can be grey or near black (black-and-white art), which makes no visible light.
   // Colorful ones are kept; dark ones are lifted; near-grey ones fall back to Soulleak's violet / indigo.
+  // The Theme accent as Soulleak shows it (soulleak.css --sl-accent*, resolved to rgb()).
+  function slAccentColor(name, fallback) {
+    try { return getComputedStyle(document.body).getPropertyValue(name).trim() || fallback; } catch (_) { return fallback; }
+  }
+
   function ambientColor(c, fallback) {
     const m = /rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/.exec(String(c || ''));
     if (!m) return fallback;
@@ -1643,8 +1648,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     try {
       const [a, b] = await getCoverDominantColors(url);
       if (soulAmbientUrl !== url) return;
-      document.body.style.setProperty('--sl-amb-1', ambientColor(a, 'rgb(139, 92, 246)'));
-      document.body.style.setProperty('--sl-amb-2', ambientColor(b || a, 'rgb(99, 102, 241)'));
+      document.body.style.setProperty('--sl-amb-1', ambientColor(a, slAccentColor('--sl-accent', 'rgb(139, 92, 246)')));
+      document.body.style.setProperty('--sl-amb-2', ambientColor(b || a, slAccentColor('--sl-accent-2', 'rgb(99, 102, 241)')));
       document.body.classList.add('sl-ambient-on');
     } catch (_) {}
   }
@@ -22376,9 +22381,15 @@ function bindCoverHoldZoom(wrapEl) {
     // Violet by default; a chosen lyrics color carries over to the wave.
     const tint = soulFs.lyricColor && soulFs.lyricColor.toLowerCase() !== '#ffffff' ? soulFs.lyricColor : null;
     const grad = ctx.createLinearGradient(0, 0, w, 0);
-    grad.addColorStop(0, tint ? '#ffffff' : '#c4b5fd');
-    grad.addColorStop(0.5, tint || '#8b5cf6');
-    grad.addColorStop(1, tint || '#6366f1');
+    // Accent colors are read at most every 2 s (not per frame), so a Theme change reaches the wave quickly.
+    const nowMs = performance.now();
+    if (!soulFs.accentAt || nowMs - soulFs.accentAt > 2000) {
+      soulFs.accentAt = nowMs;
+      soulFs.accent = [slAccentColor('--sl-accent-soft', '#c4b5fd'), slAccentColor('--sl-accent', '#8b5cf6'), slAccentColor('--sl-accent-2', '#6366f1')];
+    }
+    grad.addColorStop(0, tint ? '#ffffff' : soulFs.accent[0]);
+    grad.addColorStop(0.5, tint || soulFs.accent[1]);
+    grad.addColorStop(1, tint || soulFs.accent[2]);
     ctx.fillStyle = grad;
     for (let i = 0; i < n; i++) {
       const v = Math.max(0.04, soulFs.bars[i]);
@@ -27323,8 +27334,8 @@ function bindCoverHoldZoom(wrapEl) {
     try {
       const [a, b] = await getCoverDominantColors(url);
       if (homeAmbientUrl !== url) return;
-      document.body.style.setProperty('--sl-home-1', ambientColor(a, 'rgb(139, 92, 246)'));
-      document.body.style.setProperty('--sl-home-2', ambientColor(b || a, 'rgb(99, 102, 241)'));
+      document.body.style.setProperty('--sl-home-1', ambientColor(a, slAccentColor('--sl-accent', 'rgb(139, 92, 246)')));
+      document.body.style.setProperty('--sl-home-2', ambientColor(b || a, slAccentColor('--sl-accent-2', 'rgb(99, 102, 241)')));
       document.body.classList.add('sl-home-amb');
     } catch (_) {}
   }
