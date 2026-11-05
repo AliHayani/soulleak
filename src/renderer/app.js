@@ -19052,14 +19052,16 @@ function bindCoverHoldZoom(wrapEl) {
   // Ranks: every minute of actual playback counts. `at` is cumulative listening minutes.
   // `accent` colors the rank's label; `colors` (light, dark) fill its emblem.
   const OB_RANKS = [
-    { id: 'spawn', title: 'Spawn', at: 0, accent: '#e0a578', colors: ['#e0a578', '#7a4524'] },
-    { id: 'wanderer', title: 'Wanderer', at: 30, accent: '#d5dbe4', colors: ['#eef1f6', '#7d8796'] },
-    { id: 'aux-owner', title: 'Aux Owner', at: 90, accent: '#ffd35c', colors: ['#ffe17a', '#c4861a'] },
-    { id: 'gatekeeper', title: 'Gatekeeper', at: 210, accent: '#8ff0e0', colors: ['#b4fff2', '#2f9c8f'] },
-    { id: 'scrobbler', title: 'Scrobbler', at: 420, accent: '#8fbaff', colors: ['#b9d8ff', '#3563e0'] },
-    { id: 'soul-leaker', title: 'Soul Leaker', at: 1440, accent: '#ffa24a', colors: ['#ffc06a', '#e2421c'] },
-    { id: 'true-larper', title: 'True Larper', at: 3000, accent: '#f0a6ff', colors: ['#f6b3ff', '#6d28d9'] }
+    { id: 'spawn', title: 'Spawn', at: 0, accent: '#9aa3b4', colors: ['#6b7280', '#2a2f38'] },
+    { id: 'wanderer', title: 'Wanderer', at: 30, accent: '#d7dde6', colors: ['#eef2f7', '#6b7585'] },
+    { id: 'aux-owner', title: 'Aux Owner', at: 90, accent: '#ffc94d', colors: ['#ffe28a', '#b8741c'] },
+    { id: 'gatekeeper', title: 'Gatekeeper', at: 210, accent: '#3ee6c1', colors: ['#5ff0cc', '#0b6f63'] },
+    { id: 'scrobbler', title: 'Scrobbler', at: 420, accent: '#8fb0ff', colors: ['#d6e3ff', '#3a55f0'] },
+    { id: 'soul-leaker', title: 'Soul Leaker', at: 1440, accent: '#c084fc', colors: ['#f0dcff', '#8b2cf5'] },
+    { id: 'true-larper', title: 'True Larper', at: 3000, accent: '#f472b6', colors: ['#8b5cf6', '#ec4899'] }
   ];
+  // Ranks count down as you climb: Spawn (the start) is Rank 7, True Larper (the top) is Rank 1.
+  const rankNo = (i) => OB_RANKS.length - i;
   // Listening stats live in IndexedDB as counters of real playback seconds: 'total', 'artist:<name>', 'song:<id>'.
   const STATS_DB = 'soulleak-stats';
   const statsCounters = new Map();
@@ -19174,6 +19176,8 @@ function bindCoverHoldZoom(wrapEl) {
   const OB_SVG_PREFIX = `ob${Math.random().toString(36).slice(2, 7)}`;
   function rankEmblemSvg(index, locked) {
     const rank = OB_RANKS[index];
+    // rank-emblems.js draws the seven insignias; the older crest below is only a fallback.
+    if (window.SoulleakRankEmblems) return window.SoulleakRankEmblems.emblem(rank.id, locked);
     const id = `${OB_SVG_PREFIX}r${++obSvgSeq}`;
     const [light, dark] = locked ? ['#262430', '#111017'] : rank.colors;
     const fill = `url(#${id}g)`;
@@ -19266,13 +19270,15 @@ function bindCoverHoldZoom(wrapEl) {
     const subEl = document.getElementById('ob-level-sub');
     const fillEl = document.getElementById('ob-level-fill');
     if (!nameEl) return;
+    const card = document.getElementById('ob-level');
+    if (card) card.dataset.rank = cur.id;
     if (emblemEl && emblemEl.dataset.rank !== String(i)) {
       emblemEl.dataset.rank = String(i);
       emblemEl.innerHTML = rankEmblemSvg(i, false);
     }
     nameEl.textContent = cur.title;
     if (tierEl) {
-      tierEl.textContent = `Rank ${i + 1}`;
+      tierEl.textContent = `Rank ${rankNo(i)}`;
       tierEl.style.setProperty('--accent', cur.accent);
     }
     if (next) {
@@ -19313,9 +19319,9 @@ function bindCoverHoldZoom(wrapEl) {
       const isCur = i === ri;
       let state = reached ? '<span class="ob-bp-state is-done">Reached</span>' : `<span class="ob-bp-state">${fmtListen(r.at * 60 - total)} to go</span>`;
       if (isCur) state = '<span class="ob-bp-state is-current">Current</span>';
-      return `<div class="ob-bp-rank${reached ? ' is-reached' : ''}${isCur ? ' is-current' : ''}">
+      return `<div class="ob-bp-rank${reached ? ' is-reached' : ''}${isCur ? ' is-current' : ''}" data-rank="${r.id}">
         ${rankEmblemSvg(i, !reached)}
-        <div class="ob-bp-rank-text"><span class="ob-bp-rank-tier" style="--accent:${r.accent}">Rank ${i + 1}</span><span class="ob-bp-rank-title">${escapeHtml(r.title)}</span><span class="ob-bp-rank-need">${r.at ? `Needs ${fmtHours(r.at * 60)}` : 'Starting rank'}</span></div>
+        <div class="ob-bp-rank-text"><span class="ob-bp-rank-tier" style="--accent:${r.accent}">Rank ${rankNo(i)}</span><span class="ob-bp-rank-title">${escapeHtml(r.title)}</span><span class="ob-bp-rank-need">${r.at ? `Needs ${fmtHours(r.at * 60)}` : 'Starting rank'}</span></div>
         ${state}
       </div>`;
     }).join('');
@@ -19344,7 +19350,7 @@ function bindCoverHoldZoom(wrapEl) {
       <div class="ob-bp-hero">
         <div class="ob-bp-hero-emblem">${rankEmblemSvg(ri, false)}</div>
         <div class="ob-bp-hero-body">
-          <div class="ob-bp-kicker" style="--accent:${cur.accent}">Rank ${ri + 1} of ${OB_RANKS.length}</div>
+          <div class="ob-bp-kicker" style="--accent:${cur.accent}">Rank ${rankNo(ri)} of ${OB_RANKS.length}</div>
           <div class="ob-bp-title">${escapeHtml(cur.title)}</div>
           <div class="ob-bp-hours"><strong>${fmtListen(total)}</strong> listened <span>(${(total / 3600).toFixed(2)} h)</span></div>
           ${nextHtml}

@@ -4313,3 +4313,119 @@ body #update-modal .ota-update-sheet::before,
 body #update-modal .ota-update-sheet::after { display: none !important; }
 body #update-modal.ota-update-backdrop.hidden .ota-update-sheet,
 body #update-modal .ota-update-sheet.leaving { transform: translateY(14px) scale(0.94); }
+
+/* =====================================================================
+   Rank emblems v2 (rank-emblems.js). Each emblem is a stack of SVG layers; every moving layer animates only
+   transform / opacity, so the GPU moves it without repainting. Effects grow from Rank 7 (static) to Rank 1, and
+   pause with every other animation while the window is unfocused or hidden.
+   ===================================================================== */
+span.ob-emblem { position: relative; display: block; width: 100%; height: 100%; filter: none !important; }
+span.ob-emblem > .em-l { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+/* Matte ranks get a static shadow; the animated ones get none (a filter over moving layers repaints every frame). */
+span.ob-emblem:is([data-rank="spawn"], [data-rank="wanderer"], [data-rank="aux-owner"], [data-rank="gatekeeper"]):not(.is-locked) > .em-static {
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.55));
+}
+span.ob-emblem .em-ring, span.ob-emblem .em-ring2, span.ob-emblem .em-orbit, span.ob-emblem .em-crest, span.ob-emblem .em-core, span.ob-emblem .em-aura { will-change: transform, opacity; }
+
+@keyframes emBreathe { 0%, 100% { opacity: 0.7; } 50% { opacity: 1; } }
+@keyframes emFloat { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-2px); } }
+@keyframes emSpin { to { transform: rotate(360deg); } }
+@keyframes emSpinBack { to { transform: rotate(-360deg); } }
+@keyframes emAura { 0%, 100% { opacity: 0.4; transform: scale(0.94); } 50% { opacity: 0.9; transform: scale(1.04); } }
+
+/* Ranks 5 and 4: the core breathes. */
+span.ob-emblem:is([data-rank="aux-owner"], [data-rank="gatekeeper"]) .em-core { animation: emBreathe 4s ease-in-out infinite; }
+/* Rank 3: the core floats. */
+span.ob-emblem[data-rank="scrobbler"] .em-core { animation: emFloat 3s ease-in-out infinite; }
+/* Rank 2: the halo turns, the aura pulses, the core floats. */
+span.ob-emblem[data-rank="soul-leaker"] .em-ring { animation: emSpin 18s linear infinite; }
+span.ob-emblem[data-rank="soul-leaker"] .em-aura { animation: emAura 3.2s ease-in-out infinite; }
+span.ob-emblem[data-rank="soul-leaker"] .em-core { animation: emFloat 2.6s ease-in-out infinite; }
+/* Rank 1: two counter-rotating rings, orbiting shards, a levitating crest and a pulsing aura. */
+span.ob-emblem[data-rank="true-larper"] .em-ring { animation: emSpin 24s linear infinite; }
+span.ob-emblem[data-rank="true-larper"] .em-ring2 { animation: emSpinBack 16s linear infinite; }
+span.ob-emblem[data-rank="true-larper"] .em-orbit { animation: emSpin 9s linear infinite; }
+span.ob-emblem[data-rank="true-larper"] .em-crest { animation: emFloat 3.4s ease-in-out infinite; }
+span.ob-emblem[data-rank="true-larper"] .em-aura { animation: emAura 2.8s ease-in-out infinite; }
+
+/* Locked: a still silhouette with a padlock. True Larper keeps moving so it looks worth reaching. */
+span.ob-emblem.is-locked:not([data-rank="true-larper"]) .em-l { animation: none !important; }
+span.ob-emblem .em-lock { z-index: 2; }
+span.ob-emblem[data-rank="true-larper"].is-locked .em-lock { transform: scale(0.8) translateY(6px); }
+html.force-reduced-motion span.ob-emblem .em-l { animation: none !important; }
+
+/* ---- Rank rows (Settings > Badges) and the sidebar rank card ---- */
+.ob-bp-rank { position: relative; overflow: hidden; isolation: isolate; }
+@keyframes rowSheen { 0% { transform: translateX(-120%) skewX(-18deg); } 60%, 100% { transform: translateX(520%) skewX(-18deg); } }
+@keyframes rowSpin { to { transform: translate(-50%, -50%) rotate(360deg); } }
+
+/* Ranks 5 and 4: a faint metallic sheen passes over the card now and then. Rank 3: brighter and quicker. */
+.ob-bp-rank:is([data-rank="aux-owner"], [data-rank="gatekeeper"], [data-rank="scrobbler"])::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 22%;
+  z-index: -1;
+  pointer-events: none;
+  background: linear-gradient(90deg, transparent, var(--row-sheen, rgba(255, 255, 255, 0.05)), transparent);
+  animation: rowSheen 7s ease-in-out infinite;
+  will-change: transform;
+}
+.ob-bp-rank[data-rank="aux-owner"] { --row-sheen: rgba(255, 210, 110, 0.07); border-color: rgba(255, 201, 77, 0.16); }
+.ob-bp-rank[data-rank="gatekeeper"] { --row-sheen: rgba(90, 240, 205, 0.07); border-color: rgba(62, 230, 193, 0.16); }
+.ob-bp-rank[data-rank="scrobbler"] { --row-sheen: rgba(143, 176, 255, 0.12); border-color: rgba(143, 176, 255, 0.24); }
+.ob-bp-rank[data-rank="scrobbler"]::before { animation-duration: 4.5s; }
+
+/* Ranks 2 and 1: a slowly turning gradient border (a big conic layer behind a 1px inset cover). */
+.ob-bp-rank:is([data-rank="soul-leaker"], [data-rank="true-larper"]) {
+  border: 0 !important;
+  padding: 13px 15px;
+  background: transparent !important;
+}
+.ob-bp-rank:is([data-rank="soul-leaker"], [data-rank="true-larper"])::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 150%;
+  aspect-ratio: 1;
+  z-index: -2;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+  animation: rowSpin 9s linear infinite;
+  will-change: transform;
+}
+.ob-bp-rank:is([data-rank="soul-leaker"], [data-rank="true-larper"])::after {
+  content: '';
+  position: absolute;
+  inset: 1px;
+  z-index: -1;
+  border-radius: 9px;
+  pointer-events: none;
+  background: #07070a;
+}
+.ob-bp-rank[data-rank="soul-leaker"]::before {
+  background: conic-gradient(from 0deg, rgba(168, 85, 247, 0.08), rgba(192, 132, 252, 0.75), rgba(124, 58, 237, 0.1) 40%, rgba(168, 85, 247, 0.08) 60%, rgba(216, 180, 254, 0.6) 80%, rgba(168, 85, 247, 0.08));
+}
+.ob-bp-rank[data-rank="soul-leaker"]::after { background: radial-gradient(120% 140% at 0% 50%, rgba(139, 44, 245, 0.16), transparent 60%), #07070a; }
+.ob-bp-rank[data-rank="true-larper"]::before {
+  background: conic-gradient(from 0deg, #7c3aed, #ec4899, #e0f2fe, #7c3aed, #be123c, #ec4899, #7c3aed);
+  animation-duration: 5s;
+}
+.ob-bp-rank[data-rank="true-larper"]::after {
+  background: radial-gradient(110% 160% at 0% 50%, rgba(236, 72, 153, 0.18), transparent 55%), radial-gradient(90% 140% at 100% 50%, rgba(124, 58, 237, 0.22), transparent 60%), #08060f;
+}
+.ob-bp-rank[data-rank="true-larper"] { box-shadow: 0 0 22px rgba(124, 58, 237, 0.28); }
+.ob-bp-rank[data-rank="true-larper"] .ob-bp-rank-title { background: linear-gradient(90deg, #fff, #f5d0fe); -webkit-background-clip: text; background-clip: text; color: transparent !important; }
+/* Locked True Larper: on display but dimmed until you reach it (or hover it). */
+.ob-bp-rank[data-rank="true-larper"]:not(.is-reached) { opacity: 0.45 !important; transition: opacity 0.25s ease; }
+.ob-bp-rank[data-rank="true-larper"]:not(.is-reached):hover { opacity: 1 !important; }
+
+/* Sidebar rank card: from Rank 5 up its edge takes the current rank's color. */
+#ob-level[data-rank="aux-owner"] { border-color: rgba(255, 201, 77, 0.22) !important; }
+#ob-level[data-rank="gatekeeper"] { border-color: rgba(62, 230, 193, 0.22) !important; }
+#ob-level[data-rank="scrobbler"] { border-color: rgba(143, 176, 255, 0.28) !important; }
+#ob-level[data-rank="soul-leaker"] { border-color: rgba(192, 132, 252, 0.34) !important; box-shadow: inset 0 0 18px rgba(139, 44, 245, 0.12); }
+#ob-level[data-rank="true-larper"] { border-color: rgba(236, 72, 153, 0.4) !important; box-shadow: inset 0 0 22px rgba(124, 58, 237, 0.18), 0 0 14px rgba(236, 72, 153, 0.12); }
