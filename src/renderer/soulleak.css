@@ -4297,3 +4297,19 @@ body.theme-dark #playbar #btn-toggle-fav { transition: color 0.15s ease, transfo
 body.theme-dark #playbar #btn-toggle-fav.is-liked { color: var(--sl-accent) !important; }
 body.theme-dark #playbar #btn-toggle-fav.is-liked #fav-icon { animation: slHeartPop 0.32s var(--sl-spring, cubic-bezier(0.34, 1.56, 0.64, 1)); }
 @keyframes slHeartPop { 0% { transform: scale(0.7); } 60% { transform: scale(1.18); } 100% { transform: scale(1); } }
+
+/* Update window: a centered card instead of a sheet glued to the bottom edge. */
+body #update-modal.ota-update-backdrop { align-items: center !important; padding: 24px !important; }
+body #update-modal .ota-update-sheet {
+  border-radius: 24px;
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+  scrollbar-width: thin;
+  border: 1px solid rgb(from var(--sl-accent) r g b / 0.22) !important;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55) !important;
+  transform-origin: center;
+}
+body #update-modal .ota-update-sheet::before,
+body #update-modal .ota-update-sheet::after { display: none !important; }
+body #update-modal.ota-update-backdrop.hidden .ota-update-sheet,
+body #update-modal .ota-update-sheet.leaving { transform: translateY(14px) scale(0.94); }
