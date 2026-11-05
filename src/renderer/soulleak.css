@@ -4432,3 +4432,23 @@ html.force-reduced-motion span.ob-emblem .em-l { animation: none !important; }
 #ob-level[data-rank="scrobbler"] { border-color: rgba(143, 176, 255, 0.28) !important; }
 #ob-level[data-rank="soul-leaker"] { border-color: rgba(192, 132, 252, 0.34) !important; box-shadow: inset 0 0 18px rgba(139, 44, 245, 0.12); }
 #ob-level[data-rank="true-larper"] { border-color: rgba(236, 72, 153, 0.4) !important; box-shadow: inset 0 0 22px rgba(124, 58, 237, 0.18), 0 0 14px rgba(236, 72, 153, 0.12); }
+
+/* ---- Auto-offline: saved songs get a small mark, and offline the rest fade (app.js syncOfflineMarks) ---- */
+.track-row-title { --sl-offline-mark: 0; }
+.track-row .track-row-title::after {
+  content: '';
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  margin-left: 6px;
+  vertical-align: -1px;
+  background: var(--sl-accent, #8b5cf6);
+  opacity: var(--sl-offline-mark);
+  scale: var(--sl-offline-mark);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='12' r='11' fill='white'/%3E%3Cpath d='M12 6v8m-4-3.5 4 4 4-4M7.5 18h9' stroke='black' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round' fill='none'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='12' r='11' fill='white'/%3E%3Cpath d='M12 6v8m-4-3.5 4 4 4-4M7.5 18h9' stroke='black' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round' fill='none'/%3E%3C/svg%3E") center / contain no-repeat;
+  -webkit-mask-mode: luminance;
+  mask-mode: luminance;
+}
+body.sl-offline .track-row { transition: opacity 0.2s ease; }
+#view-settings .setting-item.sl-offline-sub.is-off { opacity: 0.45; pointer-events: none; }

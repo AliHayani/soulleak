@@ -2359,6 +2359,39 @@
               </div>
             </div>
 
+            <!-- Auto-offline (app.js initAutoOffline): save liked / replayed songs so they play without internet. -->
+            <div class="setting-item" id="sl-auto-offline-item">
+              <div class="setting-item-top" style="align-items: center;">
+                <div style="display: flex; flex-direction: column; gap: 2px;">
+                  <span class="setting-name">Save songs for offline</span>
+                  <span class="setting-hint" style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Songs you like, or play a few times, are saved on this PC so they play without internet</span>
+                </div>
+                <button class="effect-switch-btn" id="btn-sl-auto-offline" type="button" aria-label="Save songs for offline"><span class="thumb"></span></button>
+              </div>
+            </div>
+
+            <div class="setting-item sl-offline-sub">
+              <div class="setting-item-top" style="align-items: center; justify-content: space-between;">
+                <span class="setting-name">Save a song after</span>
+                <div class="theme-mode-selector" id="sl-offline-after">
+                  <button type="button" class="theme-mode-btn" data-sl-plays="2">2 plays</button>
+                  <button type="button" class="theme-mode-btn" data-sl-plays="3">3 plays</button>
+                  <button type="button" class="theme-mode-btn" data-sl-plays="5">5 plays</button>
+                  <button type="button" class="theme-mode-btn" data-sl-plays="0">Liked only</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="setting-item sl-offline-sub">
+              <div class="setting-item-top">
+                <span class="setting-name">Offline storage limit</span>
+                <span class="setting-value" id="val-sl-offline-limit">2 GB</span>
+              </div>
+              <input type="range" class="pill-range" id="slider-sl-offline-limit" min="1" max="20" step="1" value="2">
+              <div class="setting-hints"><span>1 GB</span><span>10 GB</span><span>20 GB</span></div>
+              <span class="setting-hint" style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">When it's full, the songs you played longest ago make room for new ones.</span>
+            </div>
+
             <div class="setting-item" id="music-folder-item">
               <div class="setting-item-top" style="align-items: center; justify-content: space-between;">
                 <div style="display: flex; align-items: center; gap: 12px;">

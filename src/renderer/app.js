@@ -12507,6 +12507,8 @@ function renderClickableArtists(container, rawArtist, hintTrack = null) {
       state.favorites = state.favorites.filter(f => !isSameTrack(f, track));
     } else {
       state.favorites.unshift(stampAddedAt(track));
+      // Liked songs are saved for offline right away (Auto-offline).
+      if (typeof offlineSave === 'function') offlineSave(track);
     }
     
     localStorage.setItem('devsize_favorites', JSON.stringify(state.favorites));
@@ -19439,6 +19441,133 @@ function bindCoverHoldZoom(wrapEl) {
   loadStats()
     .then(() => (window.SoulPlayback ? window.SoulPlayback.ready() : null))
     .then(() => { if (typeof renderHeavyRotation === 'function') renderHeavyRotation(); });
+  // ---- Auto-offline: songs you like, or listen to a few times, are saved on this PC (server /api/offline-save)
+  // so they play without internet. Settings > Storage holds the switch, the play count and the size limit. ----
+  const OFF_PLAYS_KEY = 'soulleak_offline_plays';
+  const offlineCfg = () => ({
+    on: localStorage.getItem('soulleak_auto_offline') !== '0',
+    after: parseInt(localStorage.getItem('soulleak_offline_after') ?? '2', 10),
+    limitGB: parseInt(localStorage.getItem('soulleak_offline_limit_gb') ?? '2', 10) || 2,
+  });
+  let offlinePlays = {};
+  try { offlinePlays = JSON.parse(localStorage.getItem(OFF_PLAYS_KEY) || '{}') || {}; } catch (_) { offlinePlays = {}; }
+  const offlineIds = new Set();
+  const offlineAsked = new Set();
+  let offlineListen = { id: null, secs: 0, counted: false, lastPos: 0 };
+
+  function offlineSave(t) {
+    const c = offlineCfg();
+    if (!c.on || !t || !t.id || !t.url || t.platform === 'local' || offlineIds.has(t.id) || offlineAsked.has(t.id)) return;
+    // The song that's playing: hand the server the exact stream being played (it may be a YouTube copy of a
+    // DRM-locked SoundCloud upload, which yt-dlp can't fetch). Songs already playing from a file on this PC are skipped.
+    let stream = '';
+    if (isSameTrack(t, state.currentTrack) && el.nativeAudio && el.nativeAudio.src) {
+      try {
+        const u = new URL(el.nativeAudio.src);
+        if (/^(localhost|127\.0\.0\.1)$/.test(u.hostname)) {
+          if (/\/api\/(local-track|downloaded-track|library-file)$/.test(u.pathname)) return;
+          if (u.pathname.endsWith('/api/audio-proxy')) stream = u.searchParams.get('url') || '';
+        } else if (/^https?:$/.test(u.protocol)) stream = u.href;
+      } catch (_) {}
+    }
+    offlineAsked.add(t.id);
+    const q = new URLSearchParams({
+      url: t.url, id: t.id, platform: t.platform || 'youtube', title: t.title || '', artist: t.artist || '',
+      duration: String(t.duration || 0), thumbnail: getTrackThumbUrl(t) || t.thumbnail || '', maxMB: String(c.limitGB * 1024),
+      stream,
+    });
+    fetch(`http://127.0.0.1:${state.serverPort}/api/offline-save?${q}`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (d && d.cached) { offlineIds.add(t.id); syncOfflineMarks(); }
+        else if (d && d.queued) [45000, 120000].forEach((ms) => setTimeout(refreshOfflineIds, ms));
+        else offlineAsked.delete(t.id);
+      })
+      .catch(() => offlineAsked.delete(t.id));
+  }
+
+  // Called every second of real playback (the listening-stats timer). A listen counts after 30 s, like Soul Playback.
+  function tickOffline(t, pos) {
+    // By id, not object: the current-track object gets replaced while a song plays. Starting the same song over
+    // (repeat, or played again from the top) after it counted begins a new listen.
+    const restarted = offlineListen.counted && Number.isFinite(pos) && pos < 5 && offlineListen.lastPos > pos + 3;
+    if (offlineListen.id !== t.id || restarted) offlineListen = { id: t.id, secs: 0, counted: false, lastPos: 0 };
+    offlineListen.lastPos = Number.isFinite(pos) ? pos : offlineListen.lastPos;
+    offlineListen.secs += 1;
+    if (offlineListen.counted || offlineListen.secs < 30 || !t.id) return;
+    offlineListen.counted = true;
+    offlinePlays[t.id] = (offlinePlays[t.id] || 0) + 1;
+    const keys = Object.keys(offlinePlays);
+    if (keys.length > 4000) keys.slice(0, keys.length - 3000).forEach((k) => delete offlinePlays[k]);
+    try { localStorage.setItem(OFF_PLAYS_KEY, JSON.stringify(offlinePlays)); } catch (_) {}
+    const after = offlineCfg().after;
+    if (after > 0 && offlinePlays[t.id] >= after) offlineSave(t);
+  }
+
+  async function refreshOfflineIds() {
+    try {
+      const d = await (await fetch(`http://127.0.0.1:${state.serverPort}/api/offline-library`)).json();
+      if (!d || !d.success) return;
+      offlineIds.clear();
+      (d.tracks || []).forEach((x) => { if (x.id) offlineIds.add(String(x.id)); });
+      // Songs in the download folder play offline too; match them like the server does ("artist - title").
+      const dl = new Set(d.downloaded || []);
+      if (dl.size) {
+        const clean = (s) => String(s || '').replace(/[<>:"/\\|?*]/g, '').replace(/\s+/g, ' ').trim();
+        const known = [...(state.history || []), ...(state.favorites || []), ...((state.playlists || []).flatMap((p) => (p && p.tracks) || []))];
+        known.forEach((t) => {
+          if (t && t.id && dl.has(`${clean(t.artist || 'unknown artist')} - ${clean(t.title || 'untitled')}`.toLowerCase())) offlineIds.add(String(t.id));
+        });
+      }
+      syncOfflineMarks();
+      if (typeof updateOfflineStorageUI === 'function') updateOfflineStorageUI();
+    } catch (_) {}
+  }
+
+  // Saved songs get a small mark on every song row, rendered or not yet rendered, through one generated stylesheet.
+  // Offline, the songs that can't play fade.
+  function syncOfflineMarks() {
+    let tag = document.getElementById('sl-offline-marks');
+    if (!tag) { tag = document.createElement('style'); tag.id = 'sl-offline-marks'; document.head.appendChild(tag); }
+    const sel = [...offlineIds].map((id) => `.track-row[data-track-id="${CSS.escape(id)}"]`);
+    tag.textContent = sel.length
+      ? `${sel.map((s) => `${s} .track-row-title`).join(',')}{--sl-offline-mark:1}\nbody.sl-offline .track-row:not(${sel.join(',')}):not([data-track-id^="local"]){opacity:.38}`
+      : 'body.sl-offline .track-row:not([data-track-id^="local"]){opacity:.38}';
+  }
+
+  function syncOnlineState() {
+    document.body.classList.toggle('sl-offline', !navigator.onLine);
+  }
+  window.addEventListener('online', () => { syncOnlineState(); showToast('Back online', 'info'); });
+  window.addEventListener('offline', () => { syncOnlineState(); showToast('Offline: your saved songs still play', 'info'); });
+
+  (function initAutoOffline() {
+    syncOnlineState();
+    const sw = document.getElementById('btn-sl-auto-offline');
+    const group = document.getElementById('sl-offline-after');
+    const limit = document.getElementById('slider-sl-offline-limit');
+    const limitVal = document.getElementById('val-sl-offline-limit');
+    const sync = () => {
+      const c = offlineCfg();
+      if (sw) sw.classList.toggle('active', c.on);
+      if (group) group.querySelectorAll('[data-sl-plays]').forEach((b) => b.classList.toggle('active', Number(b.dataset.slPlays) === c.after));
+      if (limit && document.activeElement !== limit) limit.value = String(c.limitGB);
+      if (limitVal) limitVal.textContent = `${c.limitGB} GB`;
+      document.querySelectorAll('.sl-offline-sub').forEach((r) => r.classList.toggle('is-off', !c.on));
+    };
+    if (sw) sw.addEventListener('click', () => { localStorage.setItem('soulleak_auto_offline', offlineCfg().on ? '0' : '1'); sync(); });
+    if (group) group.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-sl-plays]');
+      if (!b) return;
+      localStorage.setItem('soulleak_offline_after', b.dataset.slPlays);
+      sync();
+    });
+    if (limit) limit.addEventListener('input', () => { localStorage.setItem('soulleak_offline_limit_gb', limit.value); sync(); });
+    sync();
+    syncOfflineMarks();
+    setTimeout(refreshOfflineIds, 2500);
+  })();
+
   let lastStatsTrack = null;
   setInterval(() => {
     const audio = el.nativeAudio;
@@ -19451,6 +19580,7 @@ function bindCoverHoldZoom(wrapEl) {
     if (artist) bumpStat(`artist:${artist.toLowerCase()}`, 1, artist);
     bumpStat(`song:${getTrackCanonicalId(t)}`, 1, `${t.title || 'Untitled'}${artist ? ` by ${artist}` : ''}`);
     if (window.SoulPlayback) window.SoulPlayback.tick(t, audio.currentTime);
+    tickOffline(t, audio.currentTime);
     statsTicks += 1;
     if (statsTicks % 10 === 0) renderListenLevel();
     if (statsTicks % 5 === 0 && badgesPageOpen()) renderBadgesPage();

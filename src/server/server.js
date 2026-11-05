@@ -1955,6 +1955,7 @@ async function cacheResolvedStreamToDisk(rawStreamUrl, primaryCleanId, secondary
     if (buf.length > 64000) {
       await fs.promises.writeFile(tempPath, buf);
       await fs.promises.rename(tempPath, finalPath);
+      enforceOfflineLimit(mainId).catch(() => {});
       for (const id of ids) {
         if (id !== mainId) {
           const aliasPath = path.join(CACHE_DIR, `${id}${ext}`);
@@ -1963,7 +1964,7 @@ async function cacheResolvedStreamToDisk(rawStreamUrl, primaryCleanId, secondary
           }
         }
         saveTrackMetadata(id, {
-          id,
+          id: (id === mainId && meta.origId) || id,
           title: meta.title || '',
           artist: meta.artist || '',
           duration: meta.duration || 0,
@@ -1978,6 +1979,39 @@ async function cacheResolvedStreamToDisk(rawStreamUrl, primaryCleanId, secondary
   } finally {
     downloadingSet.delete(mainId);
   }
+}
+
+// Auto-offline (renderer: initAutoOffline). The offline library is kept under the size the user picked; when a new
+// song would push it over, the songs played longest ago go first (findCachedFile bumps a file's mtime on every play).
+let offlineLimitBytes = 0;
+async function enforceOfflineLimit(keepId) {
+  if (!offlineLimitBytes) return;
+  const audioExt = /\.(opus|webm|m4a|mp3)$/i;
+  const files = [];
+  let total = 0;
+  for (const f of await fs.promises.readdir(CACHE_DIR)) {
+    if (!audioExt.test(f) || f.includes('.temp.')) continue;
+    try {
+      const st = await fs.promises.stat(path.join(CACHE_DIR, f));
+      total += st.size;
+      files.push({ f, id: f.replace(audioExt, ''), size: st.size, used: st.mtimeMs });
+    } catch (e) {}
+  }
+  if (total <= offlineLimitBytes) return;
+  files.sort((a, b) => a.used - b.used);
+  let changed = false;
+  for (const x of files) {
+    if (total <= offlineLimitBytes) break;
+    if (x.id === keepId) continue;
+    try {
+      await fs.promises.unlink(path.join(CACHE_DIR, x.f));
+      total -= x.size;
+      try { await fs.promises.unlink(path.join(THUMBNAILS_DIR, x.id + '.jpg')); } catch (e) {}
+      delete trackMetadataIndex[x.id];
+      changed = true;
+    } catch (e) {}
+  }
+  if (changed) { try { fs.writeFileSync(METADATA_PATH, JSON.stringify(trackMetadataIndex, null, 2), 'utf-8'); } catch (e) {} }
 }
 
 async function downloadTrackToDisk(trackUrl, trackId, platform, meta = {}) {
@@ -2035,6 +2069,7 @@ async function downloadTrackToDisk(trackUrl, trackId, platform, meta = {}) {
               const ext = path.extname(tempFile);
               const outputPath = path.join(CACHE_DIR, `${cleanId}${ext}`);
               await fs.promises.rename(tempFile, outputPath);
+              enforceOfflineLimit(cleanId).catch(() => {});
               saveTrackMetadata(cleanId, {
                 id: trackId,
                 title: meta.title || '',
@@ -5451,6 +5486,7 @@ const TOKEN_PROTECTED_ROUTES = new Set([
   '/api/spotify-logout',
   '/api/prefetch',
   '/api/check-cache',
+  '/api/offline-save',
   '/api/stream-info',
   '/api/track-analysis',
   '/api/tools-status',
@@ -8613,6 +8649,38 @@ async function requestHandler(req, res) {
     return res.end(JSON.stringify({ success: true }));
   }
 
+  // Auto-offline: save a song into the offline library in the background (yt-dlp), within the size limit.
+  if (parsedUrl.pathname === '/api/offline-save') {
+    const q = parsedUrl.query;
+    const maxMB = parseInt(q.maxMB, 10);
+    if (maxMB > 0) offlineLimitBytes = maxMB * 1024 * 1024;
+    const json = (code, obj) => { res.writeHead(code, { 'Content-Type': 'application/json' }); return res.end(JSON.stringify(obj)); };
+    const id = q.id || '';
+    let trackUrl = normalizeSoundCloudUrl(q.url || '');
+    // Imported songs (Spotify, Deezer...) can point at a YouTube search page; yt-dlp would then fetch every result.
+    // Ask for the top result only.
+    try {
+      const u = new URL(trackUrl);
+      if (/(^|\.)youtube\.com$/.test(u.hostname) && u.pathname === '/results' && u.searchParams.get('search_query')) {
+        trackUrl = `ytsearch1:${u.searchParams.get('search_query')}`;
+        q.platform = 'youtube';
+      }
+    } catch (e) {}
+    if (!id || !trackUrl || q.platform === 'local') return json(400, { success: false, error: 'Nothing to save' });
+    if (await findCachedFile(id)) return json(200, { success: true, cached: true });
+    const meta = { title: q.title || '', artist: q.artist || '', duration: Number(q.duration) || 0, thumbnail: q.thumbnail || '', origId: id };
+    // The song that's playing: keep the exact audio being played (it may come from another source, e.g. YouTube for
+    // a DRM-locked SoundCloud upload). Chunked (HLS) streams and songs that aren't playing go through yt-dlp.
+    const stream = q.stream || '';
+    if (stream && /^https?:/i.test(stream) && !/\.m3u8|mpegurl/i.test(stream)) {
+      cacheResolvedStreamToDisk(stream, id, '', q.platform || 'youtube', meta).catch(() => {});
+      return json(200, { success: true, queued: true, via: 'stream' });
+    }
+    if (!resolveBinary('yt-dlp')) return json(200, { success: false, error: 'Download tools are not installed' });
+    downloadTrackToDisk(trackUrl, id, q.platform || 'youtube', meta);
+    return json(200, { success: true, queued: true });
+  }
+
   if (parsedUrl.pathname === '/api/check-cache') {
     const trackId = parsedUrl.query.id || '';
     const cleanId = cleanTrackId(trackId);
@@ -8886,8 +8954,11 @@ async function requestHandler(req, res) {
         }
       }
     } catch (e) {}
+    // Songs downloaded to the download folder also play offline (stream-info finds them by "artist - title").
+    let downloaded = [];
+    try { downloaded = [...(await buildDownloadsIndex()).keys()]; } catch (e) {}
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    return res.end(JSON.stringify({ success: true, count: tracks.length, totalBytes, tracks }));
+    return res.end(JSON.stringify({ success: true, count: tracks.length, totalBytes, tracks, downloaded }));
   }
 
   if (parsedUrl.pathname === '/api/track-analysis') {
