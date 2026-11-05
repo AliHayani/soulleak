@@ -203,8 +203,19 @@ async function installFfmpeg() {
       if (!IS_WIN) fs.chmodSync(dest, 0o755);
     }
   } finally {
-    fs.rmSync(work, { recursive: true, force: true });
-    fs.rmSync(archive, { force: true });
+    // Leftovers in the temp folder must never fail the install: on Windows, antivirus or the extractor can still
+    // hold files for a moment, and rmSync then throws ENOTEMPTY / EBUSY, which used to replace a successful install
+    // with an error. Retry briefly, then leave whatever is left for Windows' temp cleanup.
+    removeQuietly(work, true);
+    removeQuietly(archive, false);
+  }
+}
+
+function removeQuietly(target, recursive) {
+  try {
+    fs.rmSync(target, { recursive, force: true, maxRetries: 6, retryDelay: 250 });
+  } catch (err) {
+    try { logger.log('warn', `Could not remove temporary ${target}: ${err.message}`); } catch (_) {}
   }
 }
 
