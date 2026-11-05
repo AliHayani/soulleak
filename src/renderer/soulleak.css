@@ -3451,8 +3451,9 @@ body.theme-dark #playbar .playbar-left #btn-playbar-share { display: none !impor
 /* They appear only while the pointer is on the song title, laid over the title in its own space (the title fades
    out), so the heart and Add-to buttons never move. */
 body.theme-dark #playbar .playbar-left { position: relative; }
-body.theme-dark #playbar .playbar-left:has(.track-meta:hover, #btn-edit-current-track:hover, #btn-playbar-share:hover) #btn-edit-current-track,
-body.theme-dark #playbar .playbar-left:has(.track-meta:hover, #btn-edit-current-track:hover, #btn-playbar-share:hover) #btn-playbar-share {
+body.theme-dark #playbar .playbar-left:has(.track-meta:hover, #btn-edit-current-track:hover, #btn-playbar-more:hover, #btn-playbar-share:hover) #btn-edit-current-track,
+body.theme-dark #playbar .playbar-left:has(.track-meta:hover, #btn-edit-current-track:hover, #btn-playbar-more:hover, #btn-playbar-share:hover) #btn-playbar-more,
+body.theme-dark #playbar .playbar-left:has(.track-meta:hover, #btn-edit-current-track:hover, #btn-playbar-more:hover, #btn-playbar-share:hover) #btn-playbar-share {
   display: grid !important;
   position: absolute;
   top: 50%;
@@ -3463,8 +3464,10 @@ body.theme-dark #playbar .playbar-left:has(.track-meta:hover, #btn-edit-current-
   height: 32px !important;
   min-width: 32px !important;
 }
-body.theme-dark #playbar .playbar-left:has(.track-meta:hover, #btn-edit-current-track:hover, #btn-playbar-share:hover) #btn-playbar-share { left: 118px; }
-body.theme-dark #playbar .playbar-left:has(.track-meta:hover, #btn-edit-current-track:hover, #btn-playbar-share:hover) .track-meta { opacity: 0; }
+/* Edit, Download, Share, side by side over the title. */
+body.theme-dark #playbar .playbar-left:has(.track-meta:hover, #btn-edit-current-track:hover, #btn-playbar-more:hover, #btn-playbar-share:hover) #btn-playbar-more { left: 114px; }
+body.theme-dark #playbar .playbar-left:has(.track-meta:hover, #btn-edit-current-track:hover, #btn-playbar-more:hover, #btn-playbar-share:hover) #btn-playbar-share { left: 148px; }
+body.theme-dark #playbar .playbar-left:has(.track-meta:hover, #btn-edit-current-track:hover, #btn-playbar-more:hover, #btn-playbar-share:hover) .track-meta { opacity: 0; }
 body.theme-dark #playbar .scrubber-bar-wrapper { display: contents !important; }
 /* Top strip of the dock: [elapsed] ——— seek bar ——— [duration]. Keeps the row below free for the title. */
 body.theme-dark #playbar #time-current,

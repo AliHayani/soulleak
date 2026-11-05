@@ -25354,6 +25354,60 @@ function bindCoverHoldZoom(wrapEl) {
 
   let downloadAbort = null;
 
+  function isHlsPlaylist(buf, contentType) {
+    if (/mpegurl/i.test(contentType || '')) return true;
+    const head = new TextDecoder().decode(new Uint8Array(buf, 0, Math.min(buf.byteLength, 16)));
+    return head.replace(/^﻿/, '').startsWith('#EXTM3U');
+  }
+
+  // Downloads every chunk of an HLS stream (following a master playlist to its first variant) and returns them
+  // joined, init segment first, as one buffer the browser can decode (fragmented MP4, MPEG-TS or MP3 chunks).
+  async function fetchHlsAudio(playlistBuf, playlistUrl, signal) {
+    // Chunk links are relative to the original stream address, not to the local audio proxy in front of it.
+    const upstream = (u) => { try { const p = new URL(u); return p.pathname.endsWith('/api/audio-proxy') && p.searchParams.get('url') ? p.searchParams.get('url') : u; } catch (_) { return u; } };
+    const viaProxy = (u) => `http://127.0.0.1:${state.serverPort}/api/audio-proxy?url=${encodeURIComponent(u)}`;
+    const getBytes = async (u) => {
+      // Straight from the CDN like the player does; through the local proxy if that's refused.
+      let r = null;
+      try { r = await fetch(u, { signal }); } catch (e) { if (e.name === 'AbortError') throw e; }
+      if (!r || !r.ok) r = await fetch(viaProxy(u), { signal });
+      if (!r.ok) throw new Error(`Failed to load audio chunk (${r.status})`);
+      return r.arrayBuffer();
+    };
+    let text = new TextDecoder().decode(playlistBuf);
+    let base = upstream(playlistUrl);
+    const variant = /#EXT-X-STREAM-INF[^\n]*\n\s*([^#\s][^\n]*)/.exec(text);
+    if (variant) {
+      base = new URL(variant[1].trim(), base).href;
+      text = new TextDecoder().decode(await getBytes(base));
+    }
+    if (/#EXT-X-KEY:(?![^\n]*METHOD=NONE)/.test(text)) throw new Error('This song is protected and can\'t be downloaded');
+    const urls = [];
+    const map = /#EXT-X-MAP:[^\n]*URI="([^"]+)"/.exec(text);
+    if (map) urls.push(new URL(map[1], base).href);
+    text.split(/\r?\n/).forEach((line) => {
+      const l = line.trim();
+      if (l && !l.startsWith('#')) urls.push(new URL(l, base).href);
+    });
+    if (!urls.length) throw new Error('This stream has no audio to download');
+    // A few chunks at a time, kept in order.
+    const parts = new Array(urls.length);
+    let next = 0;
+    const worker = async () => {
+      while (next < urls.length) {
+        const i = next++;
+        parts[i] = new Uint8Array(await getBytes(urls[i]));
+        if (el.downloadBtnText && urls.length > 4) el.downloadBtnText.textContent = `Downloading ${Math.round((parts.filter(Boolean).length / urls.length) * 100)}%`;
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(4, urls.length) }, worker));
+    const total = parts.reduce((n, p) => n + p.byteLength, 0);
+    const out = new Uint8Array(total);
+    let off = 0;
+    parts.forEach((p) => { out.set(p, off); off += p.byteLength; });
+    return out.buffer;
+  }
+
   function cancelCurrentDownload() {
     if (downloadAbort) {
       try { downloadAbort.abort(); } catch (_) {}
@@ -25606,7 +25660,12 @@ function bindCoverHoldZoom(wrapEl) {
 
         const resFile = await fetch(fetchUrl, { signal: downloadAbort.signal });
         if (!resFile.ok) throw new Error(`Failed to load audio (${resFile.status})`);
-        const arrayBuffer = await resFile.arrayBuffer();
+        let arrayBuffer = await resFile.arrayBuffer();
+        // SoundCloud (and some other sources) only stream as HLS: the "file" is a playlist of short chunks, which
+        // can't be decoded. Fetch the chunks and join them into one audio file first.
+        if (isHlsPlaylist(arrayBuffer, resFile.headers.get('content-type'))) {
+          arrayBuffer = await fetchHlsAudio(arrayBuffer, fetchUrl, downloadAbort.signal);
+        }
 
         if (downloadAbort?.signal?.aborted) throw new DOMException('Aborted', 'AbortError');
 
