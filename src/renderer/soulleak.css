@@ -3448,8 +3448,23 @@ body.theme-dark #playbar .playbar-center {
 body.theme-dark #playbar .playbar-left #btn-edit-current-track,
 body.theme-dark #playbar .playbar-left #btn-playbar-more,
 body.theme-dark #playbar .playbar-left #btn-playbar-share { display: none !important; }
-body.theme-dark #playbar .playbar-left:hover #btn-edit-current-track,
-body.theme-dark #playbar .playbar-left:hover #btn-playbar-share { display: grid !important; }
+/* They appear only while the pointer is on the song title, laid over the title in its own space (the title fades
+   out), so the heart and Add-to buttons never move. */
+body.theme-dark #playbar .playbar-left { position: relative; }
+body.theme-dark #playbar .playbar-left:has(.track-meta:hover, #btn-edit-current-track:hover, #btn-playbar-share:hover) #btn-edit-current-track,
+body.theme-dark #playbar .playbar-left:has(.track-meta:hover, #btn-edit-current-track:hover, #btn-playbar-share:hover) #btn-playbar-share {
+  display: grid !important;
+  position: absolute;
+  top: 50%;
+  left: 80px; /* where the title starts: dock padding 14 + cover 48 + gap */
+  transform: translateY(-50%);
+  z-index: 2;
+  width: 32px !important;
+  height: 32px !important;
+  min-width: 32px !important;
+}
+body.theme-dark #playbar .playbar-left:has(.track-meta:hover, #btn-edit-current-track:hover, #btn-playbar-share:hover) #btn-playbar-share { left: 118px; }
+body.theme-dark #playbar .playbar-left:has(.track-meta:hover, #btn-edit-current-track:hover, #btn-playbar-share:hover) .track-meta { opacity: 0; }
 body.theme-dark #playbar .scrubber-bar-wrapper { display: contents !important; }
 /* Top strip of the dock: [elapsed] ——— seek bar ——— [duration]. Keeps the row below free for the title. */
 body.theme-dark #playbar #time-current,
@@ -4276,3 +4291,9 @@ body #view-settings#view-settings.sl-ghost .setting-item.sl-ghost-keep {
 .sl-peek-btn:hover .sl-peek-circle,
 .sl-peek-btn:focus-visible .sl-peek-circle { color: #fff; border-color: rgb(from var(--sl-accent-deep) r g b / 0.7); background: rgb(from var(--sl-accent-deep) r g b / 0.16); }
 .sl-peek-btn.sl-ghost-keep .sl-peek-circle { color: #fff; background: var(--sl-accent-deep); border-color: var(--sl-accent-deep); }
+
+/* Liked song: the dock heart fills in the accent color, with a small pop when you like it. */
+body.theme-dark #playbar #btn-toggle-fav { transition: color 0.15s ease, transform 0.15s ease; }
+body.theme-dark #playbar #btn-toggle-fav.is-liked { color: var(--sl-accent) !important; }
+body.theme-dark #playbar #btn-toggle-fav.is-liked #fav-icon { animation: slHeartPop 0.32s var(--sl-spring, cubic-bezier(0.34, 1.56, 0.64, 1)); }
+@keyframes slHeartPop { 0% { transform: scale(0.7); } 60% { transform: scale(1.18); } 100% { transform: scale(1); } }

@@ -12523,6 +12523,12 @@ function renderClickableArtists(container, rawArtist, hintTrack = null) {
     }
     const isFav = state.favorites.some(f => isSameTrack(f, state.currentTrack));
     el.favIcon.setAttribute('fill', isFav ? 'currentColor' : 'none');
+    // Soulleak: a liked song's heart is filled in the accent color (soulleak.css #btn-toggle-fav.is-liked).
+    if (el.btnToggleFav) {
+      el.btnToggleFav.classList.toggle('is-liked', isFav);
+      el.btnToggleFav.setAttribute('aria-pressed', isFav ? 'true' : 'false');
+      el.btnToggleFav.title = isFav ? 'Remove from Liked songs' : 'Add to Liked songs';
+    }
   }
 
   function setNavCount(node, count) {
