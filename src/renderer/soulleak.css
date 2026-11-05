@@ -4131,3 +4131,133 @@ body.theme-dark #sp-home .sp-tile .sp-heart { backdrop-filter: none !important; 
 body:not(.is-playing) .sl-hero-fx::before,
 body:not(.is-playing) .sl-hero-fx::after,
 body:not(.is-playing) .sl-hero-fx i { animation-play-state: paused !important; }
+
+
+/* =====================================================================
+   Wallpaper & smoked glass (app.js syncSoulGlass). The background is the Background media picture / GIF
+   (#custom-bg) or the cover background (#cover-bg). While one shows, the panels turn into translucent smoked
+   glass and #sl-wallpaper lays the smoked scrim + "Wallpaper dim" over it. All static: nothing animates.
+   ===================================================================== */
+body.sl-wallpaper-off #custom-bg { display: none !important; }
+#custom-bg, #cover-bg { contain: strict; transform: translateZ(0); }
+#custom-bg img { object-position: center right; }
+/* Lite mode used to hide the cover background entirely; it's a static blurred picture, so it stays. */
+body.perf.cover-bg-on #cover-bg { display: block !important; }
+
+#sl-wallpaper {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  display: none;
+  pointer-events: none;
+  contain: strict;
+  transform: translateZ(0);
+  opacity: var(--sl-wall-scrim, 1);
+  background:
+    linear-gradient(rgba(0, 0, 0, var(--sl-wall-veil, 0)), rgba(0, 0, 0, var(--sl-wall-veil, 0))),
+    linear-gradient(135deg, rgba(5, 5, 10, 0.85) 0%, rgba(15, 10, 28, 0.68) 55%, rgba(5, 5, 10, 0.78) 100%);
+}
+body.sl-glass #sl-wallpaper,
+body.cover-bg-on #sl-wallpaper { display: block; }
+
+/* ---- Smoked-glass panels (doubled IDs outrank the solid Obsidian rules above) ---- */
+body.theme-dark:is(.sl-glass, .cover-bg-on) #main-content#main-content {
+  background:
+    radial-gradient(70% 60% at 14% 6%, color-mix(in srgb, var(--sl-amb-1) calc(26% * var(--sl-amb-a)), transparent), transparent 72%),
+    radial-gradient(60% 55% at 92% 18%, color-mix(in srgb, var(--sl-amb-2) calc(18% * var(--sl-amb-a)), transparent), transparent 72%),
+    rgba(8, 8, 14, 0.42) !important;
+}
+body.theme-dark:is(.sl-glass, .cover-bg-on) #sidebar#sidebar {
+  background: rgba(10, 9, 17, 0.52) !important;
+  border-color: rgba(255, 255, 255, 0.06) !important;
+}
+body.theme-dark:is(.sl-glass, .cover-bg-on) #playbar#playbar { background: rgba(12, 10, 20, 0.58) !important; }
+body.theme-dark:is(.sl-glass, .cover-bg-on) .top-nav .search-box { background: rgba(12, 10, 20, 0.58) !important; }
+body.theme-dark:is(.sl-glass, .cover-bg-on) #right-panel#right-panel { background: rgba(8, 8, 14, 0.5) !important; }
+/* Blur only on the outer frame (sidebar, header search, dock), never on rows or anything that scrolls. Each blurred
+   panel gets its own GPU layer; the blur is skipped while the window is unfocused (styles.css). */
+body.theme-dark:is(.sl-glass, .cover-bg-on) #sidebar#sidebar,
+body.theme-dark:is(.sl-glass, .cover-bg-on) #playbar#playbar,
+body.theme-dark:is(.sl-glass, .cover-bg-on) .top-nav .search-box {
+  backdrop-filter: blur(6px) !important;
+  -webkit-backdrop-filter: blur(6px) !important;
+  transform: translateZ(0);
+}
+/* The sidebar's inverted-corner pieces are painted black to fake a curve against a solid page; over a background
+   they show as black notches. */
+body.theme-dark:is(.sl-glass, .cover-bg-on) #sidebar::before,
+body.theme-dark:is(.sl-glass, .cover-bg-on) #sidebar::after { display: none !important; }
+
+/* Cards: darker glass with a violet hairline. */
+body.theme-dark:is(.sl-glass, .cover-bg-on) .sl-hero,
+body.theme-dark:is(.sl-glass, .cover-bg-on) #sidebar .ob-level,
+body.theme-dark:is(.sl-glass, .cover-bg-on) #sp-home .sp-tile {
+  background: rgba(14, 12, 24, 0.55) !important;
+  border: 1px solid rgba(124, 58, 237, 0.22) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+body.theme-dark:is(.sl-glass, .cover-bg-on) .track-row:hover,
+body.theme-dark:is(.sl-glass, .cover-bg-on) .track-row.selected {
+  background: rgba(14, 12, 24, 0.55) !important;
+  box-shadow: inset 0 0 0 1px rgba(124, 58, 237, 0.22);
+}
+
+/* ---- Settings live preview (settings-peek.js): the window fades while a visual setting changes ---- */
+#view-settings.sl-ghost-tr {
+  transition: opacity 0.19s cubic-bezier(0.2, 0, 0, 1), visibility linear, background-color 0.2s ease, backdrop-filter 0.2s ease;
+}
+#view-settings .sl-ghost-t {
+  transition: opacity 0.2s ease, background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease,
+    transform 0.2s cubic-bezier(0.2, 0, 0, 1) !important;
+}
+body #view-settings#view-settings.sl-ghost {
+  background: transparent !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+body #view-settings#view-settings.sl-ghost .sl-ghost-dim.sl-ghost-dim { opacity: var(--sl-ghost-op, 0.05) !important; }
+body #view-settings#view-settings.sl-ghost .sl-ghost-path.sl-ghost-path {
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+body #view-settings#view-settings.sl-ghost .setting-item.sl-ghost-keep {
+  background: rgba(12, 10, 20, 0.84) !important;
+  border-radius: 16px !important;
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.55), inset 0 0 0 1px rgba(124, 58, 237, 0.32) !important;
+}
+
+/* Hold-to-preview eye, under the ESC close button. */
+.sl-peek-btn {
+  position: absolute;
+  top: 84px;
+  right: 20px;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--md-sys-color-on-surface-variant);
+  cursor: pointer;
+  touch-action: none;
+  user-select: none;
+}
+.sl-peek-btn[hidden] { display: none; }
+.sl-peek-circle {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 1.7px solid color-mix(in srgb, var(--md-sys-color-outline) 60%, transparent);
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+.sl-peek-label { font-size: 10px; font-weight: 700; letter-spacing: 0.06em; }
+.sl-peek-btn:hover .sl-peek-circle,
+.sl-peek-btn:focus-visible .sl-peek-circle { color: #fff; border-color: rgba(124, 58, 237, 0.7); background: rgba(124, 58, 237, 0.16); }
+.sl-peek-btn.sl-ghost-keep .sl-peek-circle { color: #fff; background: #7c3aed; border-color: #7c3aed; }

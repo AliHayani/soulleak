@@ -12,7 +12,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getServerPort: () => ipcRenderer.invoke('get-server-port'),
   setAppProxy: (proxyUrl) => ipcRenderer.invoke('set-app-proxy', proxyUrl),
   getGpuCompositing: () => ipcRenderer.invoke('get-gpu-compositing'),
-  pickMedia: () => ipcRenderer.invoke('pick-media'),
+  pickMedia: (opts) => ipcRenderer.invoke('pick-media', opts || {}),
   importAudioFiles: () => ipcRenderer.invoke('import-audio-files'),
   pickLocalFiles: () => ipcRenderer.invoke('pick-local-files'),
   pickLocalFolder: () => ipcRenderer.invoke('pick-local-folder'),

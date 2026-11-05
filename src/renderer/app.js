@@ -5805,6 +5805,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       'Interface': 'Интерфейс',
       'Theme': 'Тема',
       'Banners': 'Баннеры',
+      'Wallpapers': 'Обои',
       'Integrations': 'Интеграции',
       'Storage': 'Хранилище',
       'Advanced': 'Расширенные',
@@ -5968,6 +5969,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       'Interface': 'Інтерфейс',
       'Theme': 'Тема',
       'Banners': 'Банери',
+      'Wallpapers': 'Шпалери',
       'Integrations': 'Інтеграції',
       'Storage': 'Сховище',
       'Advanced': 'Розширені',
@@ -16420,7 +16422,46 @@ function bindCoverHoldZoom(wrapEl) {
   document.addEventListener('visibilitychange', syncBgVideoPlayback);
   if (window.electronAPI && window.electronAPI.onWindowVisibility) window.electronAPI.onWindowVisibility(() => syncBgVideoPlayback());
 
+  // ---- Soulleak wallpaper: the Background media picture / GIF behind the whole window, under smoked-glass panels. ----
+  // soulleak_wallpaper '1'/'0' (on by default: shows the Background media file, if one is chosen),
+  // soulleak_wallpaper_dim 0-100 (50 = default smoked scrim). The cover background gets the glass panels too.
+  function soulWallpaperOn() { return localStorage.getItem('soulleak_wallpaper') !== '0'; }
+  function syncSoulGlass() {
+    const on = soulWallpaperOn();
+    const wall = document.getElementById('sl-wallpaper');
+    const dim = Math.max(0, Math.min(100, parseInt(localStorage.getItem('soulleak_wallpaper_dim') ?? '50', 10) || 0));
+    if (wall) {
+      // 0-50: the smoked scrim fades in from 0 to full; 50-100: an extra black veil on top.
+      wall.style.setProperty('--sl-wall-scrim', String(Math.min(1, dim / 50)));
+      wall.style.setProperty('--sl-wall-veil', String(Math.max(0, (dim - 50) / 80)));
+    }
+    document.body.classList.toggle('sl-wallpaper-off', !on);
+    document.body.classList.toggle('sl-glass', on && !!localStorage.getItem('riff_bg_url'));
+    const sw = document.getElementById('btn-sl-wallpaper');
+    if (sw) sw.classList.toggle('active', on);
+    const slider = document.getElementById('slider-sl-wallpaper-dim');
+    if (slider && document.activeElement !== slider) slider.value = String(dim);
+    const val = document.getElementById('val-sl-wallpaper-dim');
+    if (val) val.textContent = `${dim}%`;
+  }
+  (function initSoulWallpaper() {
+    // The Erwin test wallpaper is gone; drop its leftover setting.
+    localStorage.removeItem('soulleak_wallpaper_url');
+    const sw = document.getElementById('btn-sl-wallpaper');
+    if (sw) sw.addEventListener('click', () => {
+      localStorage.setItem('soulleak_wallpaper', soulWallpaperOn() ? '0' : '1');
+      syncSoulGlass();
+    });
+    const slider = document.getElementById('slider-sl-wallpaper-dim');
+    if (slider) slider.addEventListener('input', () => {
+      localStorage.setItem('soulleak_wallpaper_dim', slider.value);
+      syncSoulGlass();
+    });
+    syncSoulGlass();
+  })();
+
   function updateCustomBg() {
+    syncSoulGlass();
     const bgUrl = localStorage.getItem('riff_bg_url') || '';
     const opacityVal = parseInt(localStorage.getItem('riff_bg_opacity') ?? '100', 10);
     const blurVal = parseInt(localStorage.getItem('riff_bg_blur') ?? '0', 10);
@@ -16508,8 +16549,17 @@ function bindCoverHoldZoom(wrapEl) {
   if (btnChooseCustomBg) {
     btnChooseCustomBg.addEventListener('click', async () => {
       if (window.electronAPI && window.electronAPI.pickMedia) {
-        const url = await window.electronAPI.pickMedia();
+        // Pictures and GIFs only (no videos) for the background.
+        const url = await window.electronAPI.pickMedia({ images: true });
         if (url) {
+          // Cover background replaces the picture while music plays, so a newly picked picture would seem to do
+          // nothing. Picking one means you want to see it: turn the cover background off.
+          if (getAdv('cover_bg', false)) {
+            const coverSw = document.querySelector('.effect-switch-btn[data-adv="cover_bg"]');
+            if (coverSw) coverSw.click();
+            showToast('Cover background turned off so your picture shows', 'info');
+          }
+          localStorage.setItem('soulleak_wallpaper', '1');
           localStorage.setItem('riff_bg_url', url);
           updateCustomBg();
           onBackgroundChanged('custom', true);

@@ -680,8 +680,11 @@ function runGUI() {
         return true;
       });
 
-      ipcMain.handle('pick-media', async () => {
-        const r = await dialog.showOpenDialog(mainWindow, { properties: ['openFile'], filters: [{ name: 'Media', extensions: ['png','jpg','jpeg','webp','gif','mp4','webm'] }] });
+      ipcMain.handle('pick-media', async (event, opts) => {
+        // { images: true }: pictures and GIFs only (the background); otherwise videos are allowed too (avatars).
+        const pics = ['png','jpg','jpeg','jfif','pjpeg','pjp','webp','gif','bmp','avif'];
+        const filters = opts && opts.images ? [{ name: 'Pictures and GIFs', extensions: pics }] : [{ name: 'Media', extensions: [...pics, 'mp4','webm'] }];
+        const r = await dialog.showOpenDialog(mainWindow, { properties: ['openFile'], filters });
         return r.canceled ? null : pathToFileURL(r.filePaths[0]).href;
       });
 
