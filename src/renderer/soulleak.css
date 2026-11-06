@@ -4047,6 +4047,8 @@ body.theme-dark.sl-home-amb #main-content:has(#view-discover.active) {
   --sl-amb-2: var(--sl-home-2);
   --sl-amb-a: 1;
 }
+/* Advanced > "Ambient light on home page" off: no glow on Home at all. */
+body.theme-dark.sl-home-amb-off #main-content:has(#view-discover.active) { --sl-amb-a: 0 !important; }
 
 /* ---- Settings > Account: Accounts panel (accounts.js) ---- */
 .sl-accounts {

@@ -16936,7 +16936,8 @@ function bindCoverHoldZoom(wrapEl) {
   const btnToggleAdv = document.getElementById('btn-toggle-adv-section');
   const advWrapper = document.getElementById('adv-collapsible-wrapper');
   if (btnToggleAdv && advWrapper) {
-    const isAdvOpen = localStorage.getItem('riff_adv_open') === 'true';
+    // Advanced has its own Settings page now, so it starts open (closing it is still remembered).
+    const isAdvOpen = localStorage.getItem('riff_adv_open') !== 'false';
     if (isAdvOpen) {
       btnToggleAdv.classList.add('is-open');
       advWrapper.classList.add('is-open');
@@ -17002,6 +17003,8 @@ function bindCoverHoldZoom(wrapEl) {
         if (newVal) loadHomePage();
         applyHomeLayout();
       } else if (key === 'my_wave_ambient') {
+        // Soulleak's Home glow (coloured from the first For you cover) follows this switch too.
+        document.body.classList.toggle('sl-home-amb-off', !newVal);
         const homeAmb = document.getElementById('home-ambient');
         if (homeAmb) homeAmb.style.display = newVal ? '' : 'none';
         const ambientEl = document.getElementById('my-wave-ambient-light');
@@ -17923,9 +17926,22 @@ function bindCoverHoldZoom(wrapEl) {
       }).catch(e => console.error('Failed to sync proxy config to server', e));
 
       if (window.electronAPI && typeof window.electronAPI.setAppProxy === 'function') {
-        window.electronAPI.setAppProxy(payload.enabled ? activeProxyUrl : '').catch(e => console.error('Failed to set app proxy', e));
+        window.electronAPI.setAppProxy(payload.enabled ? activeProxyUrl : '').then((r) => {
+          const dead = !!(payload.enabled && r && r.success === false && r.error === 'unreachable');
+          // Say it once per proxy, not on every 30 s re-check.
+          if (dead && proxyDeadWarned !== activeProxyUrl) {
+            proxyDeadWarned = activeProxyUrl;
+            showToast("That proxy isn't answering, so Soulleak is using your normal connection.", 'error');
+          }
+          if (!dead) proxyDeadWarned = '';
+          proxyIsDead = dead;
+        }).catch(e => console.error('Failed to set app proxy', e));
       }
     }
+    let proxyDeadWarned = '';
+    let proxyIsDead = false;
+    // A proxy app (v2rayN etc.) started after Soulleak: look again every 30 s while the proxy is on but not answering.
+    setInterval(() => { if (proxyIsDead && isProxyEnabled()) syncActiveProxyToBackend(); }, 30000);
 
     function renderProxyList() {
       if (!proxyListContainer) return;
@@ -18001,6 +18017,11 @@ function bindCoverHoldZoom(wrapEl) {
             } else {
               localStorage.removeItem('riff_proxy_active_id');
             }
+          }
+          // No proxies left: the switch goes off instead of staying on with nothing to use.
+          if (!currentList.length) {
+            localStorage.setItem('riff_proxy_enabled', 'false');
+            if (btnProxyEnable) btnProxyEnable.classList.remove('active');
           }
           renderProxyList();
           syncActiveProxyToBackend();
@@ -27648,6 +27669,8 @@ function bindCoverHoldZoom(wrapEl) {
     const sec = document.getElementById('sp-quick-sec');
     const container = document.getElementById('sp-quick');
     if (!sec || !container) return;
+    // Advanced > Heavy rotation (the old "Jump back in" switch; this row took its place).
+    if (!getAdv('jump_back', true)) { sec.hidden = true; return; }
     let list = (window.SoulPlayback && window.SoulPlayback.heavyRotation) ? window.SoulPlayback.heavyRotation(12) : [];
     if (!list.length) {
       list = (state.history || [])
@@ -27711,6 +27734,7 @@ function bindCoverHoldZoom(wrapEl) {
       document.body.classList.add('sl-home-amb');
     } catch (_) {}
   }
+  document.body.classList.toggle('sl-home-amb-off', !getAdv('my_wave_ambient', true));
   const spMadeRow = document.getElementById('sp-made');
   if (spMadeRow) {
     let homeAmbTimer = null;

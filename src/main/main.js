@@ -557,15 +557,35 @@ function runGUI() {
     ipcMain.on('open-logs-folder', () => { shell.openPath(LOG_DIR); });
 
       ipcMain.handle('get-server-port', () => serverPort);
+      // Only route the whole app through a proxy that answers. A dead one used to cut every image, page and
+      // update check off the internet; now the app stays on the normal connection and says so.
+      const proxyAnswers = (proxyUrl, timeoutMs = 1500) => new Promise((resolve) => {
+        let host, port;
+        try {
+          const u = new URL(proxyUrl.includes('://') ? proxyUrl : 'socks5://' + proxyUrl);
+          host = u.hostname.replace(/^\[|\]$/g, '');
+          port = Number(u.port) || (u.protocol === 'https:' ? 443 : u.protocol === 'http:' ? 80 : 1080);
+        } catch (_) { return resolve(false); }
+        const sock = require('net').connect({ host, port });
+        const done = (ok) => { try { sock.destroy(); } catch (_) {} resolve(ok); };
+        sock.setTimeout(timeoutMs, () => done(false));
+        sock.once('connect', () => done(true));
+        sock.once('error', () => done(false));
+      });
       ipcMain.handle('set-app-proxy', async (event, proxyUrl) => {
         try {
           const clean = String(proxyUrl || '').trim();
+          if (clean && !(await proxyAnswers(clean))) {
+            await session.defaultSession.setProxy({ mode: 'direct' });
+            return { success: false, error: 'unreachable' };
+          }
           const config = clean
             ? { proxyRules: clean, proxyBypassRules: '<local>,127.0.0.1,localhost' }
             : { mode: 'direct' };
           await session.defaultSession.setProxy(config);
           return { success: true };
         } catch (e) {
+          try { await session.defaultSession.setProxy({ mode: 'direct' }); } catch (_) {}
           return { success: false, error: e.message };
         }
       });
