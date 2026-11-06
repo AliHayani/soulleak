@@ -553,6 +553,11 @@
   function renderHero() {
     const hero = heroRoot();
     if (!hero || !app) return;
+    // The hero's auras and motes hold still while the hero is off screen (another page open, or scrolled away).
+    if (!hero._slSeen && window.IntersectionObserver) {
+      hero._slSeen = true;
+      new IntersectionObserver((en) => { hero.classList.toggle('sl-offscreen', !en[en.length - 1].isIntersecting); }).observe(hero);
+    }
     // The rank comes from the sidebar card, which the rank system keeps up to date.
     const text = (id) => { const e = document.getElementById(id); return e ? e.textContent.trim() : ''; };
     const fillEl = document.getElementById('ob-level-fill');

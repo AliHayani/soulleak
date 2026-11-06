@@ -4164,6 +4164,9 @@ body.theme-dark #sp-home .sp-tile .sp-heart { backdrop-filter: none !important; 
 body:not(.is-playing) .sl-hero-fx::before,
 body:not(.is-playing) .sl-hero-fx::after,
 body:not(.is-playing) .sl-hero-fx i { animation-play-state: paused !important; }
+.sl-hero.sl-offscreen .sl-hero-fx::before,
+.sl-hero.sl-offscreen .sl-hero-fx::after,
+.sl-hero.sl-offscreen .sl-hero-fx i { animation-play-state: paused !important; }
 
 
 /* =====================================================================
@@ -4207,14 +4210,19 @@ body.theme-dark:is(.sl-glass, .cover-bg-on) #sidebar#sidebar {
 body.theme-dark:is(.sl-glass, .cover-bg-on) #playbar#playbar { background: rgb(from var(--md-sys-color-surface-container) r g b / 0.58) !important; }
 body.theme-dark:is(.sl-glass, .cover-bg-on) .top-nav .search-box { background: rgb(from var(--md-sys-color-surface-container) r g b / 0.58) !important; }
 body.theme-dark:is(.sl-glass, .cover-bg-on) #right-panel#right-panel { background: rgb(from var(--md-sys-color-surface-container-lowest) r g b / 0.5) !important; }
-/* Blur only on the outer frame (sidebar, header search, dock), never on rows or anything that scrolls. Each blurred
-   panel gets its own GPU layer; the blur is skipped while the window is unfocused (styles.css). */
+/* No backdrop blur on the panels: with anything moving behind or inside them (a video wallpaper, the spinning
+   cover, the seekbar) Chromium redid a full blur pass every frame. The panels are plain smoked glass, and a still
+   wallpaper picture is blurred once, on its own GPU layer, which the compositor caches as one texture. */
 body.theme-dark:is(.sl-glass, .cover-bg-on) #sidebar#sidebar,
 body.theme-dark:is(.sl-glass, .cover-bg-on) #playbar#playbar,
 body.theme-dark:is(.sl-glass, .cover-bg-on) .top-nav .search-box {
-  backdrop-filter: blur(6px) !important;
-  -webkit-backdrop-filter: blur(6px) !important;
-  transform: translateZ(0);
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+body.sl-glass #custom-bg img:not([src$='.gif' i]) {
+  filter: blur(var(--banner-blur, 3px));
+  transform: translateZ(0) scale(1.03);
+  will-change: transform;
 }
 /* The sidebar's inverted-corner pieces are painted black to fake a curve against a solid page; over a background
    they show as black notches. */
@@ -4515,3 +4523,16 @@ body.unfocused .sl-asc *, body.unfocused .sl-asc *::before, body.unfocused .sl-a
 /* Replay Ascension, on the True Larper row in Settings > Badges */
 .sl-asc-replay { margin-left: 10px; height: 30px; padding: 0 14px; border-radius: 999px; font: inherit; font-size: 12.5px; font-weight: 700; color: #fff; cursor: pointer; background: linear-gradient(135deg, rgba(124, 58, 237, 0.7), rgba(236, 72, 153, 0.7)); border: 1px solid rgba(255, 255, 255, 0.25); box-shadow: 0 0 16px rgba(236, 72, 153, 0.35); white-space: nowrap; }
 .sl-asc-replay:hover { box-shadow: 0 0 24px rgba(236, 72, 153, 0.55); }
+
+/* CPU: the small emblems that are always on screen (sidebar rank card, Home hero) hold still and only move while
+   hovered. Their spinning layers kept the compositor drawing every frame for an icon nobody was looking at.
+   The Badges page and the Ascension ceremony keep them moving. */
+#ob-level:not(:hover) span.ob-emblem .em-l,
+#sl-hero span.ob-emblem:not(:hover) .em-l { animation: none !important; }
+#ob-level { contain: layout style; isolation: isolate; }
+.ob-bp-rank { contain: layout style paint; }
+/* Settings is hidden with visibility (not display: none) so it opens instantly, which kept every animation inside
+   it running while closed: the Badges page's rank rows and emblems ticked all the time. */
+.content-view:not(.active) *,
+.content-view:not(.active) *::before,
+.content-view:not(.active) *::after { animation-play-state: paused !important; }

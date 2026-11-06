@@ -17435,6 +17435,19 @@ function bindCoverHoldZoom(wrapEl) {
     const t = Math.min(1, (now - m3c.start) / S.MORPH_MS);
     return { a: S.profile(m3c.from), b: S.profile(m3c.to), e: S.ease(t) };
   }
+  // Theme colours for the cover ring, read at most once a second. Reading getComputedStyle every frame forced a
+  // full-page style recalculation 60-240 times a second (the main source of Soulleak's idle CPU use).
+  function m3cColors(now) {
+    const c = m3c.colors;
+    if (c && now - c.at < 1000) return c;
+    const cs = getComputedStyle(document.documentElement);
+    m3c.colors = {
+      at: now,
+      dim: cs.getPropertyValue('--md-sys-color-surface-container-highest-solid').trim() || '#444',
+      primary: cs.getPropertyValue('--md-sys-color-primary').trim() || '#d0bcff',
+    };
+    return m3c.colors;
+  }
   function m3cDraw(now) {
     const ctx = m3c.ctx;
     const S = window.RiffShapes;
@@ -17492,14 +17505,14 @@ function bindCoverHoldZoom(wrapEl) {
       const imgSize = Math.ceil(currentCover * 1.06);
       ctx.drawImage(m3c.img, (iw - side) / 2, (ih - side) / 2, side, side, cx - imgSize / 2, cy - imgSize / 2, imgSize, imgSize);
     } else {
-      ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--md-sys-color-surface-container-highest-solid') || '#444';
+      ctx.fillStyle = m3cColors(now).dim;
       ctx.fillRect(0, 0, CANVAS_PX, CANVAS_PX);
     }
     ctx.restore();
     const audio = el.nativeAudio;
     const dur = audio && isFinite(audio.duration) && audio.duration > 0 ? audio.duration : 0;
     const p = dur ? Math.min(1, Math.max(0, audio.currentTime / dur)) : 0;
-    const primary = (getComputedStyle(document.documentElement).getPropertyValue('--md-sys-color-primary') || '#d0bcff').trim();
+    const primary = m3cColors(now).primary;
     const STEPS = 240;
     const ringPoint = (phi, wave) => {
       const r = radiusAt(phi - rot) + RING_GAP + RING_W / 2 + wave;
@@ -17552,6 +17565,11 @@ function bindCoverHoldZoom(wrapEl) {
       m3c.rotRate = m3c.targetRate;
     }
 
+    // Cap the spinning cover at ~30 fps: on 144/240 Hz screens it otherwise redraws the canvas every refresh.
+    if (m3c.last && now - m3c.last < 31 && !isHoverAnimating) {
+      m3c.raf = requestAnimationFrame(m3cLoop);
+      return;
+    }
     if (!m3c.last) m3c.last = now;
     const delta = Math.min(64, Math.max(0, now - m3c.last));
     m3c.last = now;

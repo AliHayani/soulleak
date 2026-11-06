@@ -144,9 +144,9 @@
       const dt = Math.min(0.05, (now - last) / 1000); last = now;
       const age = (now - start) / 1000;
       // the fountain runs hardest as the crest lands, then keeps a gentle trickle
-      const rate = age < 0.6 ? 0 : age < 2.2 ? 140 : age < 6 ? 30 : 12;
+      const rate = age < 0.6 ? 0 : age < 2.2 ? 140 : age < 6 ? 30 : age < 8 ? 12 : 0;
       const o = origin();
-      let n = rate * dt + Math.random();
+      let n = rate ? rate * dt + Math.random() : 0;
       while (n-- >= 1 && parts.length < 260) {
         const a = -Math.PI / 2 + (Math.random() - 0.5) * 1.5;
         const sp = (120 + Math.random() * 260) * dpr;
@@ -167,6 +167,8 @@
         ctx.drawImage(p.img, p.x - s / 2, p.y - s / 2, s, s);
       }
       ctx.globalAlpha = 1;
+      // After 8 s the fountain stops; once the last ember fades the loop ends, even if the ceremony stays open.
+      if (!rate && !parts.length) { raf = 0; return; }
       raf = requestAnimationFrame(frame);
     }
     raf = requestAnimationFrame(frame);
