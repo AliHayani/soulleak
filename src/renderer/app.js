@@ -10238,19 +10238,42 @@ document.addEventListener('DOMContentLoaded', async () => {
       .trim();
   }
 
+  // Other versions of a song: these words mean it anywhere in the title...
+  // ("cover" too, except in song names like "Cover Me", "Take Cover", "Under Cover of Darkness").
+  const SEARCH_VERSION_ANYWHERE = /\b(acoustic|unplugged|piano version|acapella|a cappella|remix|rmx|mashup|bootleg|sped up|speed up|spedup|slowed|nightcore|lofi|lo fi|karaoke|instrumental|8d audio|8d|bass boosted|type beat|tv size|reverb|intro|(?<!take |under )cover(?! me\b| of\b| up\b| you\b| girl\b| story\b)|covers|covered)\b/;
+  // ...these only in a bracket or after a dash ("Live Forever" is a song, "(Live)" and "- live" aren't).
+  const SEARCH_VERSION_TAGGED = /\b(live|demo|edit|extended|reprise|tribute|version|stripped|orchestral|blend|flip|jersey|phonk)\b/;
+
+  function searchVersionWords(t) {
+    // NFKC turns fancy Unicode letters ("𝐬𝐩𝐞𝐝 𝐮𝐩") into plain ones.
+    const raw = String((t && t.title) || '').normalize('NFKC').toLowerCase();
+    // Symbols become spaces, so "valentine|laufey|sped up" keeps "sped" a word of its own.
+    const plain = raw.replace(/[^\p{L}\p{N}\s]/gu, ' ').replace(/\s+/g, ' ').trim();
+    const words = new Set(plain.match(new RegExp(SEARCH_VERSION_ANYWHERE.source, 'g')) || []);
+    const tagged = [...raw.matchAll(/[\(\[【]([^\)\]】]*)[\)\]】]/g)].map(m => m[1]);
+    const dash = raw.split(/\s*[-–|~]\s*/).slice(1);
+    [...tagged, ...dash].forEach(seg => (normalizeMatchText(seg).match(new RegExp(SEARCH_VERSION_TAGGED.source, 'g')) || []).forEach(w => words.add(w)));
+    return words;
+  }
+
   function rankSearchTracks(query, tracks) {
     if (!Array.isArray(tracks) || tracks.length < 2) return tracks;
     const q = normalizeMatchText(stripFeaturing(query));
     if (!q) return tracks;
+    const qWords = new Set(q.split(' '));
+    // A version (acoustic, cover, sped up, live...) goes below the originals unless the search asks for it.
+    const isVersion = (t) => [...searchVersionWords(t)].some(w => !w.split(' ').every(p => qWords.has(p)));
     const exact = [];
     const rest = [];
+    const versions = [];
     tracks.forEach(t => {
+      if (isVersion(t)) { versions.push(t); return; }
       const title = normalizeMatchText(stripFeaturing(t.title));
       const artist = normalizeMatchText(t.artist);
       const hit = title === q || (artist && (q === artist + ' ' + title || q === title + ' ' + artist));
       (hit ? exact : rest).push(t);
     });
-    return exact.length ? exact.concat(rest) : tracks;
+    return exact.concat(rest, versions);
   }
 
   function getSearchHistory() {
