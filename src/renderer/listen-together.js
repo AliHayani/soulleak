@@ -340,15 +340,23 @@
 
   // ---------- networking ----------
 
-  // PeerJS's built-in TURN relays (eu-0/us-0.turn.peerjs.com) no longer resolve, so only STUN is listed: it finds
-  // each app's public address so they can connect directly, which works on most home networks. A TURN relay for
-  // strict networks can be added to RELAY_SERVERS later.
+  // STUN finds each app's public address so friends can connect directly (most home networks). When a network won't
+  // allow a direct link (CGNAT, mobile data, strict routers or firewalls), the room goes through Soulleak's Metered
+  // TURN relay instead: UDP and TCP on 80 and 443, and TLS on 443 for networks that only allow web traffic. Only the
+  // small sync messages pass through it; everyone still streams the music themselves.
   const ICE_SERVERS = [
     { urls: 'stun:stun.l.google.com:19302' },
-    { urls: 'stun:stun1.l.google.com:19302' },
     { urls: 'stun:stun.cloudflare.com:3478' },
+    { urls: 'stun:stun.relay.metered.ca:80' },
   ];
-  const RELAY_SERVERS = [];
+  // The relay login lives in lt-relay.js, which is not in git (see .gitignore); without it there's no relay fallback.
+  const RELAY_LOGIN = window.SoulleakRelayLogin && window.SoulleakRelayLogin.username ? window.SoulleakRelayLogin : null;
+  const RELAY_SERVERS = RELAY_LOGIN ? [
+    'turn:global.relay.metered.ca:80',
+    'turn:global.relay.metered.ca:80?transport=tcp',
+    'turn:global.relay.metered.ca:443',
+    'turns:global.relay.metered.ca:443?transport=tcp',
+  ].map((urls) => ({ urls, username: RELAY_LOGIN.username, credential: RELAY_LOGIN.credential })) : [];
 
   function newPeer(id) {
     if (typeof window.Peer !== 'function') throw new Error('PeerJS is missing');
@@ -356,7 +364,7 @@
     return id ? new window.Peer(id, opts) : new window.Peer(opts);
   }
 
-  const BLOCKED_MSG = "Found the room, but your networks won't let the apps connect directly. Try another network (e.g. home Wi-Fi instead of mobile data or school/work Wi-Fi).";
+  const BLOCKED_MSG = "Found the room, but couldn't connect to it, even through Soulleak's relay. Check that you're both online, then try again (or try another network).";
 
   function startRoom(attempt = 0) {
     if (room) return;

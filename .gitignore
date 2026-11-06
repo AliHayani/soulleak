@@ -21,3 +21,6 @@ storage.json
 *.enc
 *.tmp
 .yt-logged-out
+
+# Listen Together relay login (Metered TURN): shipped in the installer, never in the public repo
+src/renderer/lt-relay.js
