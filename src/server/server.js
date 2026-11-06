@@ -945,6 +945,9 @@ function scNotPlainSong(t, match) {
   if (wantArtist.length >= 2) {
     const credited = [uploader, t.publisher_metadata && t.publisher_metadata.artist, t.title].some(s => compact(s).includes(wantArtist));
     if (!credited) return `not credited to ${match.artist}`;
+    // Without the song's length there's no way to tell a re-upload from a cover ("Mghayer" by "Acoustician"),
+    // so only the artist's own account counts.
+    if (!(want > 30) && !compact(uploader).includes(wantArtist)) return 'no length to check, not the artist\'s account';
   }
   return '';
 }

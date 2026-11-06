@@ -4779,17 +4779,24 @@ document.addEventListener('DOMContentLoaded', async () => {
       // A forced fresh lookup (after a dead link) skips the server's cached link once.
       delete track._forceFreshStream;
       let res;
+      let data;
+      // The stuck prompt waits longer while the song is still being found (see the stall detector).
+      state.streamLookupPending = currentToken;
       try {
-        res = await fetch(streamInfoUrl, { signal });
-      } catch (fetchErr) {
-        if (fetchErr instanceof TypeError) {
-          await new Promise(r => setTimeout(r, 600));
+        try {
           res = await fetch(streamInfoUrl, { signal });
-        } else {
-          throw fetchErr;
+        } catch (fetchErr) {
+          if (fetchErr instanceof TypeError) {
+            await new Promise(r => setTimeout(r, 600));
+            res = await fetch(streamInfoUrl, { signal });
+          } else {
+            throw fetchErr;
+          }
         }
+        data = await res.json();
+      } finally {
+        if (state.streamLookupPending === currentToken) state.streamLookupPending = null;
       }
-      const data = await res.json();
 
       if (currentToken !== state.loadToken) return;
 
@@ -19692,7 +19699,10 @@ function bindCoverHoldZoom(wrapEl) {
       if (moving) closeStallPrompt();
       return;
     }
-    if (!stallWatch.shown && Date.now() - stallWatch.since >= STALL_MS) {
+    // Finding the song can take 10 s or more on PCs where YouTube's quick lookup fails (yt-dlp runs instead);
+    // that isn't stuck, so the lookup gets 25 s before the prompt, and the song 10 s once it has audio.
+    const stallLimit = state.streamLookupPending === state.loadToken ? 25000 : STALL_MS;
+    if (!stallWatch.shown && Date.now() - stallWatch.since >= stallLimit) {
       stallWatch.shown = true;
       openStallPrompt(t);
     }
