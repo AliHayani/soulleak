@@ -33,54 +33,98 @@
     if (card) card.classList.toggle('sl-ascended', !!(r && r.shown && card.dataset.rank === 'true-larper'));
   }
 
-  // ---------- sound: a 3 s ascension shimmer, synthesized (no files) ----------
-  function playShimmer() {
+  // ---------- sound: a 5.5 s trophy fanfare, synthesized (no files), timed to the ceremony ----------
+  // Stage 1 (0-0.9 s) sub-bass drop + rising noise swell as the screen shakes; stage 2 (0.45-1.65 s) four slow bell
+  // chimes C-E-G-C as the crest lands; stage 3 (1.8-3.4 s) a wide C-major chord swell under the title; stage 4
+  // (3.4-5.5 s) a few high sparkle pings ringing out. Everything runs through a generated 3.5 s cathedral reverb
+  // (45% wet / 55% dry) and a compressor. The music ducks to 25% while it plays (app.duck).
+  function playFanfare() {
     const AC = window.AudioContext || window.webkitAudioContext;
     if (!AC) return;
     let ctx;
     try { ctx = new AC(); } catch (_) { return; }
-    const t0 = ctx.currentTime + 0.03;
-    const master = ctx.createGain(); master.gain.value = 0.35; master.connect(ctx.destination);
-    // reverb: a generated 2.6 s decaying noise impulse
-    const verb = ctx.createConvolver();
-    const len = Math.floor(ctx.sampleRate * 2.6);
-    const ir = ctx.createBuffer(2, len, ctx.sampleRate);
-    for (let ch = 0; ch < 2; ch++) { const d = ir.getChannelData(ch); for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3.2); }
-    verb.buffer = ir;
-    const verbGain = ctx.createGain(); verbGain.gain.value = 0.55; verb.connect(verbGain).connect(master);
-    // stereo delay: two taps panned left and right, feeding back a little
-    const dry = ctx.createGain(); dry.gain.value = 0.8; dry.connect(master); dry.connect(verb);
-    [[0.23, -0.7], [0.31, 0.7]].forEach(([time, pan]) => {
-      const dl = ctx.createDelay(1); dl.delayTime.value = time;
-      const fb = ctx.createGain(); fb.gain.value = 0.32;
-      const pn = ctx.createStereoPanner(); pn.pan.value = pan;
-      const g = ctx.createGain(); g.gain.value = 0.35;
-      dry.connect(dl); dl.connect(fb).connect(dl); dl.connect(g).connect(pn).connect(master); pn.connect(verb);
-    });
-    // sub-bass impact: 90 Hz falling to 38 Hz
+    if (app && app.duck) { try { app.duck(); } catch (_) {} }
+    const now = ctx.currentTime + 0.04;
+    const sr = ctx.sampleRate;
+
+    const out = ctx.createGain(); out.gain.value = 0.5;
+    const comp = ctx.createDynamicsCompressor();
+    comp.threshold.value = -16; comp.knee.value = 12; comp.ratio.value = 4; comp.attack.value = 0.006; comp.release.value = 0.35;
+    comp.connect(out).connect(ctx.destination);
+    // cathedral reverb: 3.5 s of stereo noise, decaying exponentially and darkening as it fades
+    const len = Math.floor(sr * 3.5);
+    const ir = ctx.createBuffer(2, len, sr);
+    for (let ch = 0; ch < 2; ch++) {
+      const d = ir.getChannelData(ch);
+      let lp = 0;
+      for (let i = 0; i < len; i++) {
+        const k = i / len;
+        const a = 0.55 - 0.45 * k; // one-pole low-pass that closes over time
+        lp += a * ((Math.random() * 2 - 1) - lp);
+        d[i] = lp * Math.exp(-4.6 * k) * (i < sr * 0.012 ? i / (sr * 0.012) : 1);
+      }
+    }
+    const verb = ctx.createConvolver(); verb.buffer = ir;
+    const wet = ctx.createGain(); wet.gain.value = 0.45;
+    const dry = ctx.createGain(); dry.gain.value = 0.55;
+    const bus = ctx.createGain();
+    bus.connect(dry).connect(comp);
+    bus.connect(verb); verb.connect(wet).connect(comp);
+    const panned = (pan) => { const p = ctx.createStereoPanner(); p.pan.value = pan; p.connect(bus); return p; };
+
+    // Stage 1: sub-bass drop 110 -> 38 Hz over 0.45 s with a warm 1.2 s decay
     const sub = ctx.createOscillator(); sub.type = 'sine';
-    sub.frequency.setValueAtTime(90, t0); sub.frequency.exponentialRampToValueAtTime(38, t0 + 0.7);
-    const subG = ctx.createGain(); subG.gain.setValueAtTime(0.0001, t0); subG.gain.exponentialRampToValueAtTime(0.9, t0 + 0.02); subG.gain.exponentialRampToValueAtTime(0.0001, t0 + 1.1);
-    sub.connect(subG).connect(master); sub.start(t0); sub.stop(t0 + 1.2);
-    // the rift: filtered noise sweeping up
-    const nb = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate); const nd = nb.getChannelData(0); for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
+    sub.frequency.setValueAtTime(110, now); sub.frequency.exponentialRampToValueAtTime(38, now + 0.45);
+    const subG = ctx.createGain();
+    subG.gain.setValueAtTime(0.0001, now); subG.gain.exponentialRampToValueAtTime(0.95, now + 0.03); subG.gain.exponentialRampToValueAtTime(0.0001, now + 1.25);
+    sub.connect(subG).connect(dry); // the sub stays dry so it stays tight
+    sub.start(now); sub.stop(now + 1.3);
+    // ...and a low-pass noise swell sweeping up 120 -> 1800 Hz
+    const nb = ctx.createBuffer(2, sr * 1, sr);
+    for (let ch = 0; ch < 2; ch++) { const d = nb.getChannelData(ch); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; }
     const noise = ctx.createBufferSource(); noise.buffer = nb;
-    const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.Q.value = 6; bp.frequency.setValueAtTime(400, t0); bp.frequency.exponentialRampToValueAtTime(6000, t0 + 0.6);
-    const nG = ctx.createGain(); nG.gain.setValueAtTime(0.0001, t0); nG.gain.exponentialRampToValueAtTime(0.25, t0 + 0.15); nG.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.75);
-    noise.connect(bp).connect(nG).connect(dry); noise.start(t0); noise.stop(t0 + 0.8);
-    // the shimmer: stacked fifths and octaves (A), each voice two detuned oscillators, swelling in and ringing out
-    const voices = [220, 329.63, 440, 659.25, 880, 1318.5, 1760];
-    voices.forEach((f, i) => {
-      [-7, 7].forEach((cents) => {
-        const o = ctx.createOscillator(); o.type = i < 3 ? 'triangle' : 'sine';
-        o.frequency.value = f; o.detune.value = cents;
+    const lpf = ctx.createBiquadFilter(); lpf.type = 'lowpass'; lpf.Q.value = 3;
+    lpf.frequency.setValueAtTime(120, now); lpf.frequency.exponentialRampToValueAtTime(1800, now + 0.8);
+    const nG = ctx.createGain();
+    nG.gain.setValueAtTime(0.0001, now); nG.gain.exponentialRampToValueAtTime(0.32, now + 0.55); nG.gain.exponentialRampToValueAtTime(0.0001, now + 0.95);
+    noise.connect(lpf).connect(nG).connect(bus); noise.start(now); noise.stop(now + 1);
+
+    // a bell: a few inharmonic partials with a quick strike and a long ring
+    function bell(t, f, vel, pan, ring = 2.8) {
+      const dest = panned(pan);
+      [[1, 1, 1], [2.0, 0.55, 0.7], [2.76, 0.36, 0.5], [5.4, 0.2, 0.32], [8.93, 0.09, 0.2]].forEach(([ratio, amp, life]) => {
+        const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.value = f * ratio;
         const g = ctx.createGain();
-        const start = t0 + 0.35 + i * 0.07, peak = 0.11 / (1 + i * 0.35);
-        g.gain.setValueAtTime(0.0001, start); g.gain.exponentialRampToValueAtTime(peak, start + 0.45); g.gain.exponentialRampToValueAtTime(0.0001, t0 + 3.0);
-        o.connect(g).connect(dry); o.start(start); o.stop(t0 + 3.1);
+        g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vel * amp, t + 0.006); g.gain.exponentialRampToValueAtTime(0.0001, t + ring * life);
+        o.connect(g).connect(dest); o.start(t); o.stop(t + ring * life + 0.05);
+      });
+    }
+    // Stage 2: four deliberate chimes, C6 E6 G6 C7, 0.4 s apart, left/right
+    [[0.45, 1046.5, -0.35], [0.85, 1318.5, 0.35], [1.25, 1568, -0.2], [1.65, 2093, 0.2]].forEach(([at, f, pan], i) => bell(now + at, f, 0.16 + i * 0.02, pan, i === 3 ? 3.6 : 2.6));
+
+    // Stage 3: the chord swell (C major, wide): detuned saws through a slowly opening low-pass
+    const padF = ctx.createBiquadFilter(); padF.type = 'lowpass'; padF.Q.value = 0.8;
+    padF.frequency.setValueAtTime(300, now + 1.8); padF.frequency.exponentialRampToValueAtTime(3600, now + 3.0); padF.frequency.exponentialRampToValueAtTime(1400, now + 5.4);
+    const padG = ctx.createGain();
+    padG.gain.setValueAtTime(0.0001, now + 1.8); padG.gain.exponentialRampToValueAtTime(0.13, now + 2.45); padG.gain.setValueAtTime(0.13, now + 3.4); padG.gain.exponentialRampToValueAtTime(0.0001, now + 5.5);
+    padF.connect(padG).connect(bus);
+    [130.81, 196.0, 261.63, 329.63, 392.0, 523.25].forEach((f, i) => {
+      [-9, 9].forEach((cents, j) => {
+        const o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.value = f; o.detune.value = cents;
+        const p = ctx.createStereoPanner(); p.pan.value = (j ? 0.45 : -0.45) * (i % 2 ? 1 : 0.6);
+        const g = ctx.createGain(); g.gain.value = 1 / (1 + i * 0.25);
+        o.connect(g).connect(p).connect(padF); o.start(now + 1.8); o.stop(now + 5.55);
       });
     });
-    setTimeout(() => { try { ctx.close(); } catch (_) {} }, 6500);
+    const low = ctx.createOscillator(); low.type = 'sine'; low.frequency.value = 65.41;
+    const lowG = ctx.createGain(); lowG.gain.setValueAtTime(0.0001, now + 1.8); lowG.gain.exponentialRampToValueAtTime(0.28, now + 2.3); lowG.gain.exponentialRampToValueAtTime(0.0001, now + 5.3);
+    low.connect(lowG).connect(dry); low.start(now + 1.8); low.stop(now + 5.4);
+    bell(now + 1.85, 523.25, 0.12, 0, 3.4); // a lower bell on the chord's arrival
+
+    // Stage 4: sparkle pings, softer and softer, into the reverb tail
+    [[3.4, 4186, 0.07, 0.6], [3.7, 3136, 0.06, -0.6], [3.95, 5274, 0.05, 0.4], [4.3, 4186, 0.04, -0.3], [4.7, 6272, 0.03, 0.5]].forEach(([at, f, v, pan]) => bell(now + at, f, v, pan, 1.6));
+
+    setTimeout(() => { try { ctx.close(); } catch (_) {} }, 9500);
   }
 
   // ---------- embers: a light canvas particle fountain ----------
@@ -176,7 +220,7 @@
       if (k < 1) spinRaf = requestAnimationFrame(spin);
     };
     setTimeout(() => { spinRaf = requestAnimationFrame(spin); }, 600);
-    playShimmer();
+    playFanfare();
     const close = () => {
       if (!open) return;
       open = null;
@@ -278,13 +322,16 @@
   }
 
   // Ctrl+Shift+L: replay the ceremony any time (a preview before Rank 1, so the real one still plays later).
-  document.addEventListener('keydown', (e) => {
-    if (e.ctrlKey && e.shiftKey && !e.altKey && (e.key === 'L' || e.key === 'l')) {
+  // Capture phase on window, so no other key handler in the app can swallow it first.
+  window.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.shiftKey && !e.altKey && (e.code === 'KeyL' || e.key === 'L' || e.key === 'l')) {
       e.preventDefault();
+      e.stopImmediatePropagation();
+      if (e.repeat || document.querySelector('.sl-asc')) return;
       const r = record();
       play({ preview: !(r && r.shown) });
     }
-  });
+  }, true);
 
   window.SoulleakAscension = {
     attach(adapter) { app = adapter; syncAura(); },

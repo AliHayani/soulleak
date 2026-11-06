@@ -19449,6 +19449,32 @@ function bindCoverHoldZoom(wrapEl) {
         return nick && nick !== 'User' ? nick : 'Soulleaker';
       },
       toast: (msg, type) => showToast(msg, type),
+      // The trophy fanfare ducks the music: down to 25% in 250 ms, held 3.5 s, back up over 1.8 s.
+      duck: () => {
+        const DOWN = 0.25, IN = 0.25, HOLD = 3.5, OUT = 1.8;
+        const g = audioEngine && audioEngine.ctx && audioEngine.masterGain ? audioEngine.masterGain.gain : null;
+        if (g) {
+          const now = audioEngine.ctx.currentTime;
+          const full = g.value;
+          g.cancelScheduledValues(now);
+          g.setValueAtTime(full, now);
+          g.linearRampToValueAtTime(full * DOWN, now + IN);
+          g.setValueAtTime(full * DOWN, now + IN + HOLD);
+          g.linearRampToValueAtTime(full, now + IN + HOLD + OUT);
+          return;
+        }
+        // Engine not running: ramp the player's own volume the same way.
+        const a = el.nativeAudio;
+        if (!a) return;
+        const full = a.volume, t0 = performance.now();
+        const step = () => {
+          const s = (performance.now() - t0) / 1000;
+          const k = s < IN ? 1 - (1 - DOWN) * (s / IN) : s < IN + HOLD ? DOWN : s < IN + HOLD + OUT ? DOWN + (1 - DOWN) * ((s - IN - HOLD) / OUT) : 1;
+          a.volume = Math.max(0, Math.min(1, full * k));
+          if (s < IN + HOLD + OUT) requestAnimationFrame(step);
+        };
+        requestAnimationFrame(step);
+      },
     });
     document.getElementById('ob-badges-page')?.addEventListener('click', (e) => {
       if (e.target.closest('[data-asc-replay]')) window.SoulleakAscension.replay();
