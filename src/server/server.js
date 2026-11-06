@@ -3491,6 +3491,7 @@ async function fetchArtistInfo(artistName, hintTrack = '') {
   let tracks = [];
   let albums = [];
   let resolvedName = cleanName;
+  let tracksByArtist = false;
 
   let artistMatch = null;
   try {
@@ -3643,6 +3644,7 @@ async function fetchArtistInfo(artistName, hintTrack = '') {
     });
     if (filteredYtm.length >= 4) {
       tracks = filteredYtm;
+      tracksByArtist = true;
     }
 
     if (tracks.length < 4) {
@@ -3708,7 +3710,9 @@ async function fetchArtistInfo(artistName, hintTrack = '') {
     }
   } catch (_) {}
 
-  if (fansCount > 12000 || (tracks && tracks.length >= 5)) {
+  // Songs only prove an artist exists when they are credited to that name. The iTunes and YouTube fallbacks above
+  // search the words, so any phrase ("thank you home made kizuro") used to come back as a verified artist.
+  if (fansCount > 12000 || (tracksByArtist && tracks && tracks.length >= 5)) {
     isVerified = true;
     isKnownArtist = true;
   }
