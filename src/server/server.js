@@ -2958,11 +2958,14 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
   if (!cachedFile && (title || artist)) {
     cachedFile = findCachedFileByMeta(title, artist);
     if (cachedFile) {
+      // A title match is a file saved under another id (another upload of the song): link the file itself, or the
+      // player asks for this song's id, gets a 404 and sits at "This song is stuck".
+      const metaFileId = path.basename(cachedFile, path.extname(cachedFile));
       res.writeHead(200, { 'Content-Type': 'application/json' });
       return res.end(JSON.stringify({
         success: true,
         isLocal: true,
-        streamUrl: `http://127.0.0.1:${PORT}/api/local-track?id=${encodeURIComponent(cleanId || cleanTrackId(title))}`
+        streamUrl: `http://127.0.0.1:${ACTIVE_PORT}/api/local-track?id=${encodeURIComponent(metaFileId || cleanId || cleanTrackId(title))}`
       }));
     }
   }
@@ -3176,11 +3179,12 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
     if (!cachedFile && (title || artist)) {
       cachedFile = findCachedFileByMeta(title, artist);
       if (cachedFile) {
+        const metaFileId = path.basename(cachedFile, path.extname(cachedFile));
         res.writeHead(200, { 'Content-Type': 'application/json' });
         return res.end(JSON.stringify({
           success: true,
           isLocal: true,
-          streamUrl: `http://127.0.0.1:${PORT}/api/local-track?id=${encodeURIComponent(cleanId || cleanTrackId(title))}`
+          streamUrl: `http://127.0.0.1:${ACTIVE_PORT}/api/local-track?id=${encodeURIComponent(metaFileId || cleanId || cleanTrackId(title))}`
         }));
       }
     }
@@ -3338,6 +3342,8 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
     res.writeHead(500, { 'Content-Type': 'application/json' });
     return res.end(JSON.stringify({ success: false, needAuth: needYtAuth, error: needYtAuth ? 'YouTube sign-in required for this track' : 'could not extract audio stream' }));
   }
+  // Nothing found and the answer already went out (timed out): nothing left to send or cache.
+  if (!streamUrl) return;
 
   const portVal = typeof ACTIVE_PORT !== 'undefined' ? ACTIVE_PORT : PORT;
   const isHls = streamUrl.includes('.m3u8');
