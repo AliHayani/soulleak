@@ -21512,18 +21512,63 @@ function bindCoverHoldZoom(wrapEl) {
         sendDiscordRpcUpdate(state.currentTrack, true);
       }
       syncDiscordRpcUI();
+      setTimeout(refreshDiscordStatus, 2500);
     });
   }
+
+  // Status line on the Discord card: connected as who, or why the status can't show and what to do about it.
+  const DISCORD_PRIVACY_HINT = 'Friends still can\'t see it? In Discord: User Settings > Activity Privacy > turn on "Share your detected activities with others".';
+  async function refreshDiscordStatus() {
+    const label = document.getElementById('discord-status-label');
+    const hint = document.getElementById('discord-status-hint');
+    if (!label || !window.electronAPI || !window.electronAPI.discordRpcGetStatus) return null;
+    let st = null;
+    try { st = await window.electronAPI.discordRpcGetStatus(); } catch (_) {}
+    if (!st) return null;
+    let text, tip = '', color = 'var(--md-sys-color-outline)';
+    if (!st.enabled) {
+      text = 'Off';
+    } else if (st.connected && !st.error) {
+      text = st.user ? `Connected as ${st.user}` : 'Connected to Discord';
+      tip = DISCORD_PRIVACY_HINT;
+      color = '#3ba55d';
+    } else if (st.connected) {
+      text = 'Discord refused the status: ' + st.error;
+      tip = DISCORD_PRIVACY_HINT;
+      color = 'var(--md-sys-color-error)';
+    } else {
+      text = 'Discord not found, retrying every 15 s';
+      tip = 'Open the Discord desktop app (the browser version can\'t show a status). If Discord runs as administrator, restart it normally.';
+      color = 'var(--md-sys-color-error)';
+    }
+    label.textContent = text;
+    label.style.color = color;
+    if (hint) { hint.textContent = tip; hint.style.display = tip ? '' : 'none'; }
+    return st;
+  }
+  // Refresh while Settings is open (it's cheap: one IPC call every 3 s, only while visible).
+  setInterval(() => {
+    const v = document.getElementById('view-settings');
+    if (!document.hidden && v && v.classList.contains('active')) refreshDiscordStatus();
+  }, 3000);
+  setTimeout(refreshDiscordStatus, 1500);
 
   const btnDiscordReconnect = document.getElementById('btn-discord-reconnect');
   if (btnDiscordReconnect) {
     btnDiscordReconnect.addEventListener('click', async () => {
       if (window.electronAPI && window.electronAPI.discordRpcReconnect) {
         await window.electronAPI.discordRpcReconnect();
-        if (state.discordRpcEnabled && state.isPlaying && state.currentTrack) {
-          sendDiscordRpcUpdate(state.currentTrack, true);
-        }
-        showToast('Discord RPC reconnected', 'info');
+        const label = document.getElementById('discord-status-label');
+        if (label) label.textContent = 'Connecting...';
+        // Give Discord a moment to answer, then say what actually happened.
+        setTimeout(async () => {
+          if (state.discordRpcEnabled && state.currentTrack) {
+            sendDiscordRpcUpdate(state.currentTrack, state.isPlaying);
+          }
+          const st = await refreshDiscordStatus();
+          if (st && st.connected) showToast('Connected to Discord', 'info');
+          else showToast('Discord not found. Open the Discord desktop app, then try again.', 'error');
+        }, 2500);
       }
     });
   }

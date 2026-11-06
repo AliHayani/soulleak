@@ -12,6 +12,9 @@ let isEnabled = true;
 let lastTrackInfo = null;
 let reconnectTimer = null;
 let isDestroying = false;
+// Shown on the Discord card in Settings so a user can see why their status is missing.
+let lastError = '';
+let lastUser = '';
 
 function initRPC() {
   if (rpcClient || isDestroying) return;
@@ -20,6 +23,8 @@ function initRPC() {
 
   rpcClient.on('ready', () => {
     isConnected = true;
+    lastError = '';
+    lastUser = rpcClient.user?.global_name || rpcClient.user?.username || '';
     console.log('[Discord RPC] Connected as', rpcClient.user?.username || 'unknown');
     if (lastTrackInfo && isEnabled) {
       _setActivity(lastTrackInfo);
@@ -35,6 +40,7 @@ function initRPC() {
 
   rpcClient.login({ clientId: CLIENT_ID }).catch(err => {
     console.warn('[Discord RPC] Login failed:', err.message || err);
+    lastError = String((err && err.message) || err);
     isConnected = false;
     rpcClient = null;
     scheduleReconnect();
@@ -69,7 +75,9 @@ function _setActivity(trackInfo) {
     state: stateText,
     timestamps: { start: startEpoch },
     assets: {
-      large_image: trackInfo.thumbnail || LOGO_ASSET,
+      // Discord rejects the whole status when an image link is over 300 characters (some YouTube Music and
+      // Spotify covers are), so a long link falls back to the logo.
+      large_image: (trackInfo.thumbnail && trackInfo.thumbnail.length <= 300) ? trackInfo.thumbnail : LOGO_ASSET,
       large_text: (effects ? `${cleanTitle.trim()} · ${effects}` : cleanTitle.trim()).substring(0, 128).padEnd(2, ' '),
       small_image: LOGO_ASSET,
       small_text: paused ? 'Paused' : (effects ? `Soulleak · ${effects}`.substring(0, 128) : 'Soulleak')
@@ -87,13 +95,23 @@ function _setActivity(trackInfo) {
   const primaryActivity = showArtistStatus
     ? Object.assign({}, baseActivity, { status_display_type: 1 })
     : baseActivity;
-  rpcClient.request('SET_ACTIVITY', { pid: process.pid, activity: primaryActivity }).catch(() => {
-    if (rpcClient && isConnected) {
-      rpcClient.request('SET_ACTIVITY', { pid: process.pid, activity: baseActivity }).catch(err => {
-        console.warn('[Discord RPC] SET_ACTIVITY error:', err.message || err);
-      });
-    }
-  });
+  // If Discord refuses a field, try the plain status, then a bare one (logo art, no button), so something shows.
+  const minimalActivity = Object.assign({}, baseActivity, { assets: { large_image: LOGO_ASSET, large_text: 'Soulleak' } });
+  delete minimalActivity.buttons;
+  const send = (activity) => (rpcClient && isConnected
+    ? rpcClient.request('SET_ACTIVITY', { pid: process.pid, activity })
+    : Promise.reject(new Error('Not connected to Discord')));
+  send(primaryActivity)
+    .catch(() => send(baseActivity))
+    .catch((err) => {
+      console.warn('[Discord RPC] SET_ACTIVITY error:', err.message || err);
+      return send(minimalActivity);
+    })
+    .then(() => { lastError = ''; })
+    .catch((err) => {
+      lastError = String((err && err.message) || err);
+      console.warn('[Discord RPC] Minimal status failed too:', lastError);
+    });
 }
 
 
@@ -139,6 +157,10 @@ function getEnabled() {
   return isEnabled;
 }
 
+function getStatus() {
+  return { enabled: isEnabled, connected: isConnected, user: isConnected ? lastUser : '', error: lastError };
+}
+
 function getConnected() {
   return isConnected;
 }
@@ -171,6 +193,7 @@ module.exports = {
   setEnabled,
   getEnabled,
   getConnected,
+  getStatus,
   destroyRPC,
   reconnectRPC,
 };

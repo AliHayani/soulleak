@@ -43,6 +43,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   discordRpcSetEnabled: (enabled) => ipcRenderer.send('discord-rpc-set-enabled', enabled),
   discordRpcGetEnabled: () => ipcRenderer.invoke('discord-rpc-get-enabled'),
   discordRpcGetConnected: () => ipcRenderer.invoke('discord-rpc-get-connected'),
+  discordRpcGetStatus: () => ipcRenderer.invoke('discord-rpc-get-status'),
   discordRpcReconnect: () => ipcRenderer.invoke('discord-rpc-reconnect'),
   getCacheSize: () => ipcRenderer.invoke('get-cache-size'),
   clearCache: () => ipcRenderer.invoke('clear-cache'),

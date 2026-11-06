@@ -4536,3 +4536,7 @@ body.unfocused .sl-asc *, body.unfocused .sl-asc *::before, body.unfocused .sl-a
 .content-view:not(.active) *,
 .content-view:not(.active) *::before,
 .content-view:not(.active) *::after { animation-play-state: paused !important; }
+/* CPU: the Home hero's auras and motes move only while the hero is hovered (about 3% CPU while playing otherwise). */
+.sl-hero:not(:hover) .sl-hero-fx::before,
+.sl-hero:not(:hover) .sl-hero-fx::after,
+.sl-hero:not(:hover) .sl-hero-fx i { animation-play-state: paused !important; }

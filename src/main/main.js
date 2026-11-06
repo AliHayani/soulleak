@@ -498,6 +498,7 @@ function runGUI() {
   ipcMain.removeHandler('get-server-port');
   ipcMain.removeHandler('discord-rpc-get-enabled');
   ipcMain.removeHandler('discord-rpc-get-connected');
+  ipcMain.removeHandler('discord-rpc-get-status');
   ipcMain.removeHandler('discord-rpc-reconnect');
   ipcMain.removeHandler('account-export');
   ipcMain.removeHandler('account-import');
@@ -595,6 +596,7 @@ function runGUI() {
 
       ipcMain.handle('discord-rpc-get-enabled', () => discordRPC.getEnabled());
       ipcMain.handle('discord-rpc-get-connected', () => discordRPC.getConnected());
+      ipcMain.handle('discord-rpc-get-status', () => discordRPC.getStatus());
       ipcMain.handle('discord-rpc-reconnect', () => {
         if (discordRPC && discordRPC.reconnectRPC) discordRPC.reconnectRPC();
         return true;
