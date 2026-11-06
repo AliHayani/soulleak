@@ -28439,6 +28439,14 @@ function bindCoverHoldZoom(wrapEl) {
     if (btnSp) btnSp.classList.toggle('active', sp);
     if (btnRiff) btnRiff.classList.toggle('active', !sp);
     if (sp) {
+      // Undo what the Soulleak layout set inline; otherwise Home stays blank until you click Home again.
+      const spHome = document.getElementById('sp-home');
+      const homeHero = document.getElementById('home-hero');
+      if (homeHero) homeHero.style.display = 'none';
+      if (spHome) {
+        spHome.classList.remove('hidden');
+        spHome.style.display = '';
+      }
       renderSpotifyHome();
     } else {
       const spHome = document.getElementById('sp-home');
