@@ -4219,7 +4219,8 @@ body.theme-dark:is(.sl-glass, .cover-bg-on) .top-nav .search-box {
 /* The sidebar's inverted-corner pieces are painted black to fake a curve against a solid page; over a background
    they show as black notches. */
 body.theme-dark:is(.sl-glass, .cover-bg-on) #sidebar::before,
-body.theme-dark:is(.sl-glass, .cover-bg-on) #sidebar::after { display: none !important; }
+body.theme-dark:is(.sl-glass, .cover-bg-on) #sidebar::after,
+body.theme-dark:is(.sl-glass, .cover-bg-on) #playbar::after { display: none !important; }
 
 /* Cards: darker glass with a violet hairline. */
 body.theme-dark:is(.sl-glass, .cover-bg-on) .sl-hero,
