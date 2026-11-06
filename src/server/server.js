@@ -927,7 +927,7 @@ const refreshServerScClientId = () => refreshSoundCloudClientId(true);
 // plain song: no words beyond the song name, the artist and harmless tags, and the same length (within 3 s).
 const SC_HARMLESS_WORDS = new Set(['official', 'audio', 'video', 'music', 'lyrics', 'lyric', 'visualizer', 'explicit', 'clean', 'original', 'version', 'remastered', 'remaster', 'single', 'hq', 'hd', 'mp3', 'free', 'download', 'the', 'and', 'x']);
 function scNotPlainSong(t, match) {
-  const norm = s => String(s || '').toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, ' ').replace(/\s+/g, ' ').trim();
+  const norm = s => String(s || '').normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, ' ').replace(/\s+/g, ' ').trim();
   const want = Number(match.duration) || 0;
   const got = (t.duration || 0) / 1000;
   // Re-uploads of the real recording are within a second or two; covers tagged with the artist's name drift more.
@@ -936,7 +936,8 @@ function scNotPlainSong(t, match) {
   const allowed = new Set([match.title, match.artist, uploader, t.publisher_metadata && t.publisher_metadata.artist].flatMap(s => norm(s).split(' ')));
   // Featured artists and producers are fine: "(feat. X)", "(with X)", "(prod. X)".
   const title = String(t.title || '').replace(/[\(\[]\s*(?:feat|ft|featuring|with|prod)\b[^\)\]]*[\)\]]/gi, ' ');
-  const extra = norm(title).split(' ').filter(w => w && !allowed.has(w) && !SC_HARMLESS_WORDS.has(w));
+  // A number stuck to a title word is part of the name ("mediacore²" is "mediacore2"), not a different version.
+  const extra = norm(title).split(' ').filter(w => w && !allowed.has(w) && !allowed.has(w.replace(/\d+$/, '')) && !SC_HARMLESS_WORDS.has(w));
   if (extra.length) return `extra words "${extra.slice(0, 4).join(' ')}"`;
   // Covers are usually titled just like the song ("I Wanna Be Yours" by Silas), so the artist must be credited:
   // the uploader or publisher is the artist ("laufey", "LaufeyOfficial"), or the title names them.
@@ -972,6 +973,28 @@ function pickSoundCloudMatch(col, match) {
       : `SoundCloud: no usable result for "${match.artist} - ${match.title}"`);
   } catch (_) {}
   return best ? best.t : null;
+}
+
+// A SoundCloud upload's real artist (publisher info, when the uploader is a label) and full length (a Go+ upload
+// reports its 30 s preview as its length).
+async function fetchSoundCloudTrackMeta(scUrlOrId) {
+  const cid = await refreshSoundCloudClientId(false);
+  if (!cid) return null;
+  const norm = normalizeSoundCloudUrl(scUrlOrId || '');
+  const idMatch = String(norm).match(/(?:tracks\/|^)(\d{6,})/i);
+  const api = idMatch
+    ? `https://api-v2.soundcloud.com/tracks/${idMatch[1]}?client_id=${cid}`
+    : (/soundcloud\.com\//i.test(norm) ? `https://api-v2.soundcloud.com/resolve?url=${encodeURIComponent(norm)}&client_id=${cid}` : '');
+  if (!api) return null;
+  const r = await fetch(api, { headers: { 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(5000) });
+  if (!r.ok) return null;
+  const t = await r.json();
+  const pm = (t && t.publisher_metadata) || {};
+  return {
+    title: (t && t.title) || '',
+    artist: String(pm.artist || '').trim(),
+    duration: Math.round(((t && (t.full_duration || t.duration)) || 0) / 1000)
+  };
 }
 
 async function fetchDirectSoundCloudStreamServer(scUrlOrId, queryFallback, match = null) {
@@ -2827,9 +2850,23 @@ async function handleTrending(req, res) {
   res.end(JSON.stringify({ success: true, tracks: tracks || [] }));
 }
 
+// The lowest score that still means "this is the song": the title matches and the artist or the length matches too.
+// Covers, versions and other songs score below it.
+const IMPORT_MIN_SCORE = 55;
+
 function scoreImportedCandidate(targetTitle, targetArtist, targetDur, cand) {
+  const base = scoreImportedCandidateOnce(targetTitle, targetArtist, targetDur, cand);
+  // Labels and channels put the real artist in the title ("OG Enzo - LUBLIN" listed under undercolective),
+  // so "Artist - Song" titles are also tried that way round.
+  const split = String(targetTitle || '').match(/^(.+?)\s[-–]\s(.+)$/);
+  if (!split) return base;
+  return Math.max(base, scoreImportedCandidateOnce(split[2], split[1], targetDur, cand));
+}
+
+function scoreImportedCandidateOnce(targetTitle, targetArtist, targetDur, cand) {
   if (!cand || !cand.title) return -999;
-  const norm = (s) => String(s || '').toLowerCase()
+  // NFKC: "mediacore²" and fancy Unicode letters compare as plain text.
+  const norm = (s) => String(s || '').normalize('NFKC').toLowerCase()
     .replace(/[^\p{L}\p{N}\s]/gu, ' ')
     .replace(/\s+/g, ' ')
     .trim();
@@ -2889,6 +2926,9 @@ function scoreImportedCandidate(targetTitle, targetArtist, targetDur, cand) {
     else if (diff > 45) score -= 35;
   }
   if (tDur > 45 && cDur > 0 && cDur < 35) return -500;
+  // Without the song's length, a long video is an interview, documentary or compilation, not the song
+  // ("Dizzy DROS - Casablanca" matched a 10-minute documentary), unless the song itself is a mix or set.
+  if (!(tDur > 30) && cDur > 480 && !/\b(mix|set|medley|megamix|album|hour|suite)\b/.test(tTitle)) score -= 60;
 
   return score;
 }
@@ -3075,10 +3115,10 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
       ? 'http_mp3_128/bestaudio[ext=mp3][protocol^=http][protocol!=http_dash_segments]/bestaudio[ext=m4a][protocol^=http]/bestaudio[protocol=https]/bestaudio/18/best'
       : ytDlpQualityFormat;
 
-    const q = ((artist ? artist + ' - ' : '') + (title || '')).trim() || queryQ;
-    const searchQ = makeCleanSearchQuery(artist, title) || q;
+    let q = ((artist ? artist + ' - ' : '') + (title || '')).trim() || queryQ;
+    let searchQ = makeCleanSearchQuery(artist, title) || q;
     // SoundCloud search fallbacks rank results against the song, so a sped-up or slowed re-upload is never picked.
-    const scMatch = title ? { title, artist: artist || '', duration: Number(duration) || 0 } : null;
+    let scMatch = title ? { title, artist: artist || '', duration: Number(duration) || 0 } : null;
 
     const sendStreamResponse = (resolvedStreamUrl, resolvedId = null) => {
       if (res.writableEnded) return;
@@ -3187,6 +3227,22 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
     if (platform === 'soundcloud' || isSc) {
       streamUrl = await resolveScCandidateStream(trackUrl, cleanId);
       if (streamUrl) return sendStreamResponse(streamUrl);
+      // The upload only gives a 30 s preview (Go+) or won't play, so the song is looked up elsewhere. Use
+      // SoundCloud's own details for that: the real artist (labels like "octobersveryown" upload Drake's songs)
+      // and the full length, not the preview's 30 s, or every real match scores too low.
+      try {
+        const scMeta = await fetchSoundCloudTrackMeta(trackUrl || cleanId);
+        if (scMeta) {
+          if (scMeta.artist) artist = scMeta.artist;
+          if (scMeta.duration > 31) duration = scMeta.duration;
+          if (!title && scMeta.title) title = scMeta.title;
+          logger.log('info', `SoundCloud preview only, looking up "${artist} - ${title}" (${scMeta.duration} s) elsewhere`);
+        }
+      } catch (_) {}
+      if (Number(duration) > 0 && Number(duration) <= 31) duration = 0;
+      q = ((artist ? artist + ' - ' : '') + (title || '')).trim() || queryQ;
+      searchQ = makeCleanSearchQuery(artist, title) || q;
+      scMatch = title ? { title, artist: artist || '', duration: Number(duration) || 0 } : null;
     } else if (isRealYtId && cleanId) {
       streamUrl = await resolveYtCandidateStream(cleanId);
       if (streamUrl) return sendStreamResponse(streamUrl, cleanId);
@@ -3234,12 +3290,20 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
             candidates.set(candidate.id, candidate);
           }
         }
-        const rankedCandidates = Array.from(candidates.values())
+        const allRanked = Array.from(candidates.values())
           .map(cand => ({ cand, score: scoreImportedCandidate(title || searchQ, artist, duration, cand) }))
-          .sort((a, b) => b.score - a.score)
-          .slice(0, maxCand);
+          .sort((a, b) => b.score - a.score);
+        // A weak match is a different song ("7liwa - Ana Machi Nta" used to play "WALLAHI" by Shaw at -500):
+        // below IMPORT_MIN_SCORE it doesn't count, so SoundCloud's real upload or the checked fallbacks get a turn.
+        const rankedCandidates = allRanked.filter(item => item.score >= IMPORT_MIN_SCORE).slice(0, maxCand);
         rankedCandidates.forEach(item => failedYtIds.add(item.cand.id));
-        if (!rankedCandidates.length) throw new Error('no yt candidates');
+        if (!rankedCandidates.length) {
+          try {
+            const top = allRanked[0];
+            if (top) logger.log('info', `YouTube refused (score ${Math.round(top.score)} < ${IMPORT_MIN_SCORE}): "${top.cand.title}" by ${top.cand.artist || '?'} for "${artist} - ${title}"`);
+          } catch (_) {}
+          throw new Error('no yt candidates');
+        }
         const streamResults = await Promise.all(rankedCandidates.map(async ({ cand }) => {
           try {
             const candResolvedUrl = await resolveYtCandidateStream(cand.id);
@@ -3282,27 +3346,45 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
 
       if (!streamUrl && !needYtAuth) {
         try {
+          // Last YouTube try: yt-dlp's own search. It used to play the first result blindly; now each result is
+          // scored like the other candidates, and only a real match plays.
           const fbRaw = await runYtDlp([
-            '--no-config', '-g', '--no-warnings', '--no-playlist', '--no-check-certificates',
+            '--no-config', '--no-warnings', '--no-playlist', '--no-check-certificates',
             '--socket-timeout', '8', '--retries', '1',
             '--extractor-args', 'youtube:player_client=default,android_vr',
             '-f', 'bestaudio/18/best',
-            `ytsearch1:${q || searchQ} audio`
-          ], 10000);
-          const fbLines = fbRaw.trim().split('\n').map(l => l.trim()).filter(l => l.startsWith('http'));
-          for (const fbUrl of fbLines) {
-            if (await verifyStreamPlayable(fbUrl)) {
-              streamUrl = fbUrl;
-              return sendStreamResponse(streamUrl);
+            '--print', '%(id)s\t%(title)s\t%(channel)s\t%(duration)s', '--print', 'urls',
+            `ytsearch3:${q || searchQ} audio`
+          ], 14000);
+          const fbLines = fbRaw.trim().split('\n').map(l => l.trim()).filter(Boolean);
+          const fbCands = [];
+          for (let i = 0; i < fbLines.length; i++) {
+            const parts = fbLines[i].split('\t');
+            if (parts.length < 4) continue;
+            const urlLine = fbLines[i + 1] || '';
+            if (!urlLine.startsWith('http')) continue;
+            const cand = { id: parts[0], title: parts[1], artist: parts[2], duration: Number(parts[3]) || 0 };
+            fbCands.push({ cand, url: urlLine, score: scoreImportedCandidate(title || searchQ, artist, duration, cand) });
+            i++;
+          }
+          fbCands.sort((a, b) => b.score - a.score);
+          for (const fb of fbCands) {
+            if (fb.score < IMPORT_MIN_SCORE) break;
+            if (await verifyStreamPlayable(fb.url)) {
+              try { logger.log('info', `YouTube search match: "${fb.cand.title}" by ${fb.cand.artist} (score ${Math.round(fb.score)}) for "${artist} - ${title}"`); } catch (_) {}
+              streamUrl = fb.url;
+              return sendStreamResponse(streamUrl, fb.cand.id);
             }
           }
+          if (fbCands[0]) try { logger.log('info', `YouTube search refused (score ${Math.round(fbCands[0].score)}): "${fbCands[0].cand.title}" by ${fbCands[0].cand.artist} for "${artist} - ${title}"`); } catch (_) {}
         } catch (_) {}
       }
     }
 
     if (!streamUrl) {
       try {
-        streamUrl = await fetchDirectSoundCloudStreamServer('', q || searchQ, scMatch && { ...scMatch, lenient: true });
+        // Same rules as every other SoundCloud try: a cover or a different song never plays as this one.
+        streamUrl = await fetchDirectSoundCloudStreamServer('', q || searchQ, scMatch);
         if (streamUrl) return sendStreamResponse(streamUrl);
       } catch (_) {}
     }
@@ -3358,7 +3440,7 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
   if (!streamUrl && !res.writableEnded) {
     try { logger.error('Stream resolve failed: ' + (title || trackUrl)); } catch (_) {}
     res.writeHead(500, { 'Content-Type': 'application/json' });
-    return res.end(JSON.stringify({ success: false, needAuth: needYtAuth, error: needYtAuth ? 'YouTube sign-in required for this track' : 'could not extract audio stream' }));
+    return res.end(JSON.stringify({ success: false, needAuth: needYtAuth, notFound: !needYtAuth, error: needYtAuth ? 'YouTube sign-in required for this track' : 'Couldn\'t find this song on YouTube or SoundCloud' }));
   }
   // Nothing found and the answer already went out (timed out): nothing left to send or cache.
   if (!streamUrl) return;

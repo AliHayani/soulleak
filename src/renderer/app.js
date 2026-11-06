@@ -4805,10 +4805,13 @@ document.addEventListener('DOMContentLoaded', async () => {
           showToast('Offline: this track is not available in local cache');
           throw new Error('Offline: track not cached locally');
         }
-        throw new Error((data && data.error) || 'Failed to extract audio stream');
+        const lookupErr = new Error((data && data.error) || 'Failed to extract audio stream');
+        lookupErr.notFound = !!(data && data.notFound);
+        throw lookupErr;
       }
 
       track._preloadedStreamUrl = data.streamUrl;
+      state._notFoundSkips = 0;
       // For Copy diagnostics: where this song really plays from (host only, the full link carries tokens).
       try {
         const raw = data.rawStreamUrl || data.streamUrl || '';
@@ -4866,7 +4869,16 @@ document.addEventListener('DOMContentLoaded', async () => {
         state.isPlaying = false;
         updatePlayPauseButton(false, false);
         if (el.trackLoadingOverlay) el.trackLoadingOverlay.classList.add('hidden');
-        showToast(didTimeoutAbort ? 'Stream request timed out' : (err.message || 'Could not load audio stream'), 'error');
+        // A song that exists nowhere (or only as covers) is skipped, so a playlist keeps playing. Five in a row
+        // means something else is wrong (no internet, YouTube blocking), so it stops there.
+        const hasNext = state.isRadioQueue || state.queueIndex + 1 < state.queue.length;
+        if (err.notFound && hasNext && (state._notFoundSkips || 0) < 5) {
+          state._notFoundSkips = (state._notFoundSkips || 0) + 1;
+          showToast(`Couldn't find "${track.title || 'this song'}", skipped`, 'info');
+          setTimeout(() => { if (currentToken === state.loadToken) playNext(); }, 900);
+        } else {
+          showToast(didTimeoutAbort ? 'Stream request timed out' : (err.message || 'Could not load audio stream'), 'error');
+        }
       }
     } finally {
       clearTimeout(fetchAbortTimeout);
