@@ -151,8 +151,8 @@ async function removeDirContents(dir, skipNames = new Set(['config.json'])) {
 
 const RIFF_DATA_ENTRIES = [
   'tracks', 'custom-lyrics', 'lyrics', 'thumbnails', 'library', 'bin', 'plugins', 'themes', 'logs', 'i18n',
-  'metadata.json', 'library.json', 'startup.json', 'yt-cookies.txt', 'google-oauth.enc', 'spotify-auth.enc',
-  '.yt-logged-out', '.soulleaktutorial'
+  'metadata.json', 'library.json', 'startup.json', 'spotify-auth.enc',
+  '.soulleaktutorial'
 ];
 
 async function copyDataEntries(fromDir, toDir) {

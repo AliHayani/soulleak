@@ -20032,8 +20032,8 @@ function bindCoverHoldZoom(wrapEl) {
     if (!btnOpen) return;
     btnOpen.click();
     if (imp.kind === 'likes' && imp.source !== 'soundcloud') {
-      // YouTube likes are private; the Log in tab signs in with Google and imports them.
-      document.getElementById('link-mode-login')?.click();
+      // YouTube likes are private and Soulleak has no YouTube sign-in any more: a public playlist link still works.
+      showToast('YouTube liked songs need a YouTube sign-in. Make a public playlist of them and paste its link here.', 'info');
       return;
     }
     const urlInput = document.getElementById('link-import-url');

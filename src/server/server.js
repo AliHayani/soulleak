@@ -20,62 +20,10 @@ const os = require('os');
 const PORT = 38472;
 let ACTIVE_PORT = PORT;
 const { DATA_DIR, CACHE_DIR, CUSTOM_LYRICS_DIR, LYRICS_DIR, THUMBNAILS_DIR, METADATA_PATH, LIBRARY_DIR, LIBRARY_PATH, ytDlpCommand, resolveDownloadDir, defaultDownloadDir, resolveBinary, clearBinaryCache, cookieJarHasYtLogin } = require('../shared/platform');
-const YT_COOKIES_FILE = path.join(DATA_DIR, 'yt-cookies.txt');
-
-let ytCookieCache = { mtime: -1, valid: false };
-function hasYtLoginCookies() {
-  try {
-    if (!fs.existsSync(YT_COOKIES_FILE)) {
-      ytCookieCache = { mtime: -1, valid: false };
-      return false;
-    }
-    const stat = fs.statSync(YT_COOKIES_FILE);
-    if (stat.mtimeMs === ytCookieCache.mtime) return ytCookieCache.valid;
-    const txt = fs.readFileSync(YT_COOKIES_FILE, 'utf8');
-    const valid = cookieJarHasYtLogin(txt);
-    ytCookieCache = { mtime: stat.mtimeMs, valid };
-    return valid;
-  } catch (_) {
-    return false;
-  }
-}
-
-function getYtAuthHeaders(origin = 'https://www.youtube.com') {
-  try {
-    if (!fs.existsSync(YT_COOKIES_FILE)) return null;
-    const raw = fs.readFileSync(YT_COOKIES_FILE, 'utf8');
-    const cookiePairs = [];
-    let sapisid = '';
-    for (const line of raw.split('\n')) {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith('#')) continue;
-      const parts = trimmed.split('\t');
-      if (parts.length >= 7) {
-        const domain = parts[0];
-        const name = parts[5];
-        const val = parts[6];
-        if (domain.includes('youtube.com')) {
-          cookiePairs.push(`${name}=${val}`);
-          if (name === 'SAPISID' || (!sapisid && name === '__Secure-3PAPISID')) {
-            sapisid = val;
-          }
-        }
-      }
-    }
-    if (!sapisid || !cookiePairs.length) return null;
-    const ts = Math.floor(Date.now() / 1000);
-    const hash = crypto.createHash('sha1').update(`${ts} ${sapisid} ${origin}`).digest('hex');
-    return {
-      'Cookie': cookiePairs.join('; '),
-      'Authorization': `SAPISIDHASH ${ts}_${hash}`,
-      'Origin': origin,
-      'X-Origin': origin,
-      'X-Goog-AuthUser': '0'
-    };
-  } catch (_) {
-    return null;
-  }
-}
+// YouTube sign-in was removed: Soulleak never sends a YouTube or Google login anywhere. These stay as no-ops
+// so the lookups that asked for a login simply run without one (age-restricted songs play from YouTube Music).
+function hasYtLoginCookies() { return false; }
+function getYtAuthHeaders() { return null; }
 
 const I18N_DIR = path.join(DATA_DIR, 'i18n');
 try { fs.mkdirSync(I18N_DIR, { recursive: true }); } catch (_) {}
@@ -1843,15 +1791,7 @@ function executeYtDlp(args, timeoutMs = 15000, opts = {}) {
     };
     if (!finalArgs.includes('--force-ipv4')) prependFlags.push('--force-ipv4');
     if (!finalArgs.includes('--geo-bypass')) prependFlags.push('--geo-bypass');
-    if (!opts.noCookies && hasYtLoginCookies() && !finalArgs.includes('--cookies')) {
-      try {
-        cookieJarPath = path.join(DATA_DIR, `.yt-cookies-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.tmp`);
-        fs.copyFileSync(YT_COOKIES_FILE, cookieJarPath);
-        prependFlags.push('--cookies', cookieJarPath);
-      } catch (_) {
-        prependFlags.push('--cookies', YT_COOKIES_FILE);
-      }
-    }
+    // No YouTube login is passed to yt-dlp any more (the per-call copies of it were left behind as plain-text files).
     if (prependFlags.length > 0) {
       finalArgs.unshift(...prependFlags);
     }
@@ -3440,7 +3380,7 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
   if (!streamUrl && !res.writableEnded) {
     try { logger.error('Stream resolve failed: ' + (title || trackUrl)); } catch (_) {}
     res.writeHead(500, { 'Content-Type': 'application/json' });
-    return res.end(JSON.stringify({ success: false, needAuth: needYtAuth, notFound: !needYtAuth, error: needYtAuth ? 'YouTube sign-in required for this track' : 'Couldn\'t find this song on YouTube or SoundCloud' }));
+    return res.end(JSON.stringify({ success: false, needAuth: needYtAuth, notFound: true, error: needYtAuth ? 'YouTube only plays this song for signed-in adults, and it isn\'t on SoundCloud' : 'Couldn\'t find this song on YouTube or SoundCloud' }));
   }
   // Nothing found and the answer already went out (timed out): nothing left to send or cache.
   if (!streamUrl) return;
@@ -4190,10 +4130,6 @@ async function handleAudioProxy(req, res, targetUrl, redirectsLeft = 5, origUrl 
       }
       const cParam = (parsed.searchParams.get('c') || '').toUpperCase();
       forward['user-agent'] = googleVideoUserAgent(parsed);
-      if ((cParam === 'WEB' || cParam === 'WEB_REMIX' || cParam === 'TVHTML5') && fs.existsSync(YT_COOKIES_FILE)) {
-        const authHdrs = getYtAuthHeaders();
-        if (authHdrs && authHdrs.Cookie) forward['cookie'] = authHdrs.Cookie;
-      }
     } else {
       forward['user-agent'] = req.headers['user-agent'] || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
     }
