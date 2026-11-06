@@ -920,7 +920,48 @@ async function refreshSoundCloudClientId(force = false) {
 
 const refreshServerScClientId = () => refreshSoundCloudClientId(true);
 
-async function fetchDirectSoundCloudStreamServer(scUrlOrId, queryFallback) {
+// A search fallback used to take SoundCloud's first result, which is often a sped-up, nightcore or slowed
+// re-upload. With `match` ({ title, artist, duration }) results are ranked like YouTube candidates instead:
+// a result that doesn't match well enough is refused (so YouTube gets its turn), unless `match.lenient`.
+// SoundCloud is full of covers, remixes, blends and edits titled like the original, so a result must also be the
+// plain song: no words beyond the song name, the artist and harmless tags, and the same length (within 8 s).
+const SC_HARMLESS_WORDS = new Set(['official', 'audio', 'video', 'music', 'lyrics', 'lyric', 'visualizer', 'explicit', 'clean', 'original', 'version', 'remastered', 'remaster', 'single', 'hq', 'hd', 'mp3', 'free', 'download', 'the', 'and', 'x']);
+function scNotPlainSong(t, match) {
+  const norm = s => String(s || '').toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, ' ').replace(/\s+/g, ' ').trim();
+  const want = Number(match.duration) || 0;
+  const got = (t.duration || 0) / 1000;
+  if (want > 30 && got > 0 && Math.abs(got - want) > 8) return `length ${Math.round(got - want)} s off`;
+  const uploader = (t.user && t.user.username) || '';
+  const allowed = new Set([match.title, match.artist, uploader, t.publisher_metadata && t.publisher_metadata.artist].flatMap(s => norm(s).split(' ')));
+  // Featured artists and producers are fine: "(feat. X)", "(with X)", "(prod. X)".
+  const title = String(t.title || '').replace(/[\(\[]\s*(?:feat|ft|featuring|with|prod)\b[^\)\]]*[\)\]]/gi, ' ');
+  const extra = norm(title).split(' ').filter(w => w && !allowed.has(w) && !SC_HARMLESS_WORDS.has(w));
+  return extra.length ? `extra words "${extra.slice(0, 4).join(' ')}"` : '';
+}
+
+function pickSoundCloudMatch(col, match) {
+  const usable = col.filter(t => t && t.policy !== 'SNIP' && !t.snipped && t.duration > 30000);
+  const ranked = usable.map(t => ({
+    t,
+    why: match.lenient ? '' : scNotPlainSong(t, match),
+    score: scoreImportedCandidate(match.title || '', match.artist || '', match.duration || 0, {
+      title: t.title || '',
+      artist: (t.publisher_metadata && t.publisher_metadata.artist) || (t.user && t.user.username) || '',
+      duration: (t.duration || 0) / 1000
+    })
+  })).sort((a, b) => b.score - a.score);
+  const best = ranked.find(r => !r.why && (r.score >= 20 || (match.lenient && r.score > -500))) || null;
+  try {
+    const fmt = s => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`;
+    const top = best || ranked[0];
+    logger.log('info', top
+      ? `SoundCloud ${best ? 'match' : `refused (${top.why || 'low score'})`}: "${top.t.title}" by ${(top.t.user && top.t.user.username) || '?'} (${fmt(top.t.duration / 1000)}, score ${Math.round(top.score)}) for "${match.artist} - ${match.title}" (${fmt(Number(match.duration) || 0)})`
+      : `SoundCloud: no usable result for "${match.artist} - ${match.title}"`);
+  } catch (_) {}
+  return best ? best.t : null;
+}
+
+async function fetchDirectSoundCloudStreamServer(scUrlOrId, queryFallback, match = null) {
   let cid = await refreshSoundCloudClientId(false);
   const norm = normalizeSoundCloudUrl(scUrlOrId || '');
   const idMatch = String(norm).match(/(?:tracks\/|^)(\d{6,})/i);
@@ -936,12 +977,14 @@ async function fetchDirectSoundCloudStreamServer(scUrlOrId, queryFallback) {
         }
       }
       if (queryFallback) {
-        const sr = await fetch(`https://api-v2.soundcloud.com/search/tracks?q=${encodeURIComponent(queryFallback)}&limit=5&client_id=${cid}`, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+        const sr = await fetch(`https://api-v2.soundcloud.com/search/tracks?q=${encodeURIComponent(queryFallback)}&limit=${match ? 12 : 5}&client_id=${cid}`, { headers: { 'User-Agent': 'Mozilla/5.0' } });
         if (sr.status === 401 || sr.status === 403) { cid = await refreshServerScClientId(); continue; }
         if (sr.ok) {
           const sj = await sr.json();
           const col = (sj && Array.isArray(sj.collection)) ? sj.collection : [];
-          const pick = col.find(t => t.policy !== 'SNIP' && t.duration > 30000 && !t.snipped) || col[0];
+          const pick = match && match.title
+            ? pickSoundCloudMatch(col, match)
+            : (col.find(t => t.policy !== 'SNIP' && t.duration > 30000 && !t.snipped) || col[0]);
           if (pick) {
             const u = await resolveScTranscodingServer(pick, cid);
             if (u && !u.includes('/preview/') && !u.includes('cf-preview-media')) return u;
@@ -3012,6 +3055,8 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
 
     const q = ((artist ? artist + ' - ' : '') + (title || '')).trim() || queryQ;
     const searchQ = makeCleanSearchQuery(artist, title) || q;
+    // SoundCloud search fallbacks rank results against the song, so a sped-up or slowed re-upload is never picked.
+    const scMatch = title ? { title, artist: artist || '', duration: Number(duration) || 0 } : null;
 
     const sendStreamResponse = (resolvedStreamUrl, resolvedId = null) => {
       if (res.writableEnded) return;
@@ -3057,7 +3102,7 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
         } catch (_) {}
       }
       if (!s && (q || searchQ)) {
-        try { s = await fetchDirectSoundCloudStreamServer('', q || searchQ); } catch (_) {}
+        try { s = await fetchDirectSoundCloudStreamServer('', q || searchQ, scMatch); } catch (_) {}
         if (s) return s;
       }
       try {
@@ -3089,7 +3134,7 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
         }
       }
       if (!s && (q || searchQ)) {
-        try { s = await fetchDirectSoundCloudStreamServer('', q || searchQ); } catch (_) {}
+        try { s = await fetchDirectSoundCloudStreamServer('', q || searchQ, scMatch); } catch (_) {}
         if (s) return s;
       }
       return s;
@@ -3144,7 +3189,16 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
       const maxCand = needYtAuth ? 1 : 3;
       const needScRace = failedYtIds.size > 0 || !cleanId || !isRealYtId;
       const scFallback = needScRace
-        ? fetchDirectSoundCloudStreamServer('', q || searchQ).then(u => u ? { url: u, id: null } : Promise.reject(new Error('no sc')))
+        // YouTube gets a 1.5 s head start: SoundCloud usually answers first, and the artist's own YouTube upload
+        // is the surest original. SoundCloud still wins when YouTube is slow or has nothing.
+        ? (async () => {
+          const raceStart = Date.now();
+          const u = await fetchDirectSoundCloudStreamServer('', q || searchQ, scMatch);
+          if (!u) throw new Error('no sc');
+          const wait = 1500 - (Date.now() - raceStart);
+          if (wait > 0) await new Promise(r => setTimeout(r, wait));
+          return { url: u, id: null };
+        })()
         : null;
 
       const ytCandidateResolution = (async () => {
@@ -3172,8 +3226,16 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
             return null;
           }
         }));
-        const match = streamResults.find(result => result !== null);
-        if (match) return match;
+        const matchIdx = streamResults.findIndex(result => result !== null);
+        const match = matchIdx >= 0 ? streamResults[matchIdx] : null;
+        if (match) {
+          try {
+            const { cand, score } = rankedCandidates[matchIdx];
+            const d = Number(cand.duration) || 0;
+            logger.log('info', `YouTube match: "${cand.title}" by ${cand.artist || '?'} (${Math.floor(d / 60)}:${String(Math.round(d % 60)).padStart(2, '0')}, score ${Math.round(score)}, id ${cand.id}) for "${artist} - ${title}"`);
+          } catch (_) {}
+          return match;
+        }
         throw new Error('no yt match');
       })();
 
@@ -3191,7 +3253,7 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
 
       if (!streamUrl) {
         try {
-          streamUrl = await fetchDirectSoundCloudStreamServer('', q || searchQ);
+          streamUrl = await fetchDirectSoundCloudStreamServer('', q || searchQ, scMatch);
           if (streamUrl) return sendStreamResponse(streamUrl);
         } catch (_) {}
       }
@@ -3218,7 +3280,7 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
 
     if (!streamUrl) {
       try {
-        streamUrl = await fetchDirectSoundCloudStreamServer('', q || searchQ);
+        streamUrl = await fetchDirectSoundCloudStreamServer('', q || searchQ, scMatch && { ...scMatch, lenient: true });
         if (streamUrl) return sendStreamResponse(streamUrl);
       } catch (_) {}
     }
