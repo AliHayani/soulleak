@@ -76,9 +76,25 @@ function createOverlay(getMainWindow) {
     win.on('closed', () => { win = null; notifyMain(false); });
   }
 
+  // Many borderless games make their own window top-most too, and Windows puts the last-activated top-most window
+  // first, so each time the game takes focus it covers the mini-player. While it's showing, put it back on top
+  // twice a second. This never takes focus, so the game keeps the keyboard.
+  let keepOnTop = null;
+  function stayOnTop(on) {
+    clearInterval(keepOnTop);
+    keepOnTop = null;
+    if (!on) return;
+    keepOnTop = setInterval(() => {
+      if (!win || win.isDestroyed() || !win.isVisible()) { clearInterval(keepOnTop); keepOnTop = null; return; }
+      win.setAlwaysOnTop(true, 'screen-saver', 1);
+      win.moveTop();
+    }, 500);
+  }
+
   function toggle() {
     if (!win) build();
     if (win.isVisible()) {
+      stayOnTop(false);
       win.hide();
       notifyMain(false);
       return;
@@ -86,7 +102,9 @@ function createOverlay(getMainWindow) {
     // Open on the screen the cursor is on, which is usually where the game is.
     place(screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea);
     win.showInactive();
-    win.setAlwaysOnTop(true, 'screen-saver');
+    win.setAlwaysOnTop(true, 'screen-saver', 1);
+    win.moveTop();
+    stayOnTop(true);
     notifyMain(true);
   }
 
@@ -130,6 +148,7 @@ function createOverlay(getMainWindow) {
   return {
     toggle,
     destroy() {
+      stayOnTop(false);
       try { globalShortcut.unregister(OVERLAY_SHORTCUT); } catch (_) {}
       if (win && !win.isDestroyed()) win.destroy();
     }
