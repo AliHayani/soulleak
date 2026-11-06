@@ -19325,6 +19325,8 @@ function bindCoverHoldZoom(wrapEl) {
     if (!nameEl) return;
     const card = document.getElementById('ob-level');
     if (card) card.dataset.rank = cur.id;
+    // Reaching Rank 1 (True Larper) plays the Ascension ceremony, once per account (ascension.js).
+    if (window.SoulleakAscension) window.SoulleakAscension.check(i === OB_RANKS.length - 1);
     if (emblemEl && emblemEl.dataset.rank !== String(i)) {
       emblemEl.dataset.rank = String(i);
       emblemEl.innerHTML = rankEmblemSvg(i, false);
@@ -19372,6 +19374,7 @@ function bindCoverHoldZoom(wrapEl) {
       const isCur = i === ri;
       let state = reached ? '<span class="ob-bp-state is-done">Reached</span>' : `<span class="ob-bp-state">${fmtListen(r.at * 60 - total)} to go</span>`;
       if (isCur) state = '<span class="ob-bp-state is-current">Current</span>';
+      if (reached && r.id === 'true-larper') state += '<button type="button" class="sl-asc-replay" data-asc-replay>Replay Ascension</button>';
       return `<div class="ob-bp-rank${reached ? ' is-reached' : ''}${isCur ? ' is-current' : ''}" data-rank="${r.id}">
         ${rankEmblemSvg(i, !reached)}
         <div class="ob-bp-rank-text"><span class="ob-bp-rank-tier" style="--accent:${r.accent}">Rank ${rankNo(i)}</span><span class="ob-bp-rank-title">${escapeHtml(r.title)}</span><span class="ob-bp-rank-need">${r.at ? `Needs ${fmtHours(r.at * 60)}` : 'Starting rank'}</span></div>
@@ -19424,6 +19427,31 @@ function bindCoverHoldZoom(wrapEl) {
     obLevelBox.addEventListener('click', openBadges);
     obLevelBox.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openBadges(); }
+    });
+  }
+
+  // Rank 1 Ascension ceremony (ascension.js): what it shows comes from the listening counters.
+  if (window.SoulleakAscension) {
+    window.SoulleakAscension.attach({
+      stats: () => {
+        let songs = 0;
+        const artists = [];
+        statsCounters.forEach((c, key) => {
+          if (key.startsWith('song:')) songs++;
+          else if (key.startsWith('artist:') && c.label) artists.push(c);
+        });
+        artists.sort((a, b) => b.seconds - a.seconds);
+        return { totalSec: statSeconds('total'), songs, topArtists: artists.slice(0, 3).map((a) => a.label) };
+      },
+      emblem: (id) => (window.SoulleakRankEmblems ? window.SoulleakRankEmblems.emblem(id, false) : rankEmblemSvg(OB_RANKS.length - 1, false)),
+      name: () => {
+        const nick = (localStorage.getItem('riff_user_nickname') || '').trim();
+        return nick && nick !== 'User' ? nick : 'Soulleaker';
+      },
+      toast: (msg, type) => showToast(msg, type),
+    });
+    document.getElementById('ob-badges-page')?.addEventListener('click', (e) => {
+      if (e.target.closest('[data-asc-replay]')) window.SoulleakAscension.replay();
     });
   }
 

@@ -4453,3 +4453,65 @@ html.force-reduced-motion span.ob-emblem .em-l { animation: none !important; }
 }
 body.sl-offline .track-row { transition: opacity 0.2s ease; }
 #view-settings .setting-item.sl-offline-sub.is-off { opacity: 0.45; pointer-events: none; }
+
+/* =====================================================================
+   Rank 1 Ascension ceremony (ascension.js): a 4 s full-screen unlock for True Larper.
+   0.0-0.6 s rift beam + shockwave + 300 ms shake, 0.6-1.8 s crest lands, 1.8-4.0 s text. All transform/opacity.
+   ===================================================================== */
+.sl-asc { position: fixed; inset: 0; z-index: 2147482000; background: rgba(4, 3, 10, 0.92); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); opacity: 0; transition: opacity 0.35s ease; font-family: "SF Pro Display", var(--sl-display); color: #fff; overflow: hidden; }
+.sl-asc.is-in { opacity: 1; }
+.sl-asc.is-out { opacity: 0; transition: opacity 0.6s ease; }
+body.unfocused .sl-asc *, body.unfocused .sl-asc *::before, body.unfocused .sl-asc *::after { animation-play-state: running !important; }
+.sl-asc-shake { position: absolute; inset: 0; }
+.sl-asc.is-in .sl-asc-shake { animation: slAscShake 0.3s cubic-bezier(0.36, 0.07, 0.19, 0.97) 0.12s both; }
+@keyframes slAscShake { 0%, 100% { transform: translate(0, 0); } 15% { transform: translate(-9px, 4px); } 30% { transform: translate(8px, -5px); } 45% { transform: translate(-6px, 3px); } 60% { transform: translate(5px, -2px); } 80% { transform: translate(-2px, 1px); } }
+.sl-asc-fx { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1; }
+/* the rift: a vertical slice of violet/magenta light that opens, flares and fades */
+.sl-asc-beam { position: absolute; left: 50%; top: 0; bottom: 0; width: 8px; margin-left: -4px; transform-origin: 50% 50%; transform: scaleY(0); opacity: 0;
+  background: linear-gradient(to bottom, transparent, #7c3aed 22%, #ec4899 42%, #ffffff 50%, #ec4899 58%, #7c3aed 78%, transparent);
+  box-shadow: 0 0 40px 10px rgba(124, 58, 237, 0.55), 0 0 90px 30px rgba(236, 72, 153, 0.25); }
+.sl-asc.is-in .sl-asc-beam { animation: slAscBeam 1.15s cubic-bezier(0.16, 1, 0.3, 1) both; }
+@keyframes slAscBeam { 0% { transform: scaleY(0) scaleX(1); opacity: 0; } 22% { transform: scaleY(1) scaleX(1); opacity: 1; } 50% { transform: scaleY(1) scaleX(14); opacity: 0.55; } 100% { transform: scaleY(1) scaleX(46); opacity: 0; } }
+.sl-asc-ring { position: absolute; left: 50%; top: 42%; width: 220px; height: 220px; margin: -110px 0 0 -110px; border-radius: 50%; border: 3px solid rgba(236, 72, 153, 0.9); box-shadow: 0 0 40px rgba(236, 72, 153, 0.7), inset 0 0 30px rgba(124, 58, 237, 0.6); opacity: 0; }
+.sl-asc-ring.r2 { border-color: rgba(167, 139, 250, 0.85); box-shadow: 0 0 50px rgba(124, 58, 237, 0.75); }
+.sl-asc.is-in .sl-asc-ring { animation: slAscRing 1.05s cubic-bezier(0.16, 1, 0.3, 1) 0.22s both; }
+.sl-asc.is-in .sl-asc-ring.r2 { animation-delay: 0.38s; }
+@keyframes slAscRing { 0% { transform: scale(0.15); opacity: 1; } 100% { transform: scale(6.5); opacity: 0; } }
+/* the card */
+.sl-asc-card { position: absolute; inset: 0; z-index: 2; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 24px; }
+.sl-asc-crest { position: relative; width: min(300px, 34vh); height: min(300px, 34vh); opacity: 0; transform: scale(0.4); }
+.sl-asc.is-in .sl-asc-crest { animation: slAscCrest 1.2s cubic-bezier(0.16, 1, 0.3, 1) 0.6s both; }
+@keyframes slAscCrest { 0% { transform: scale(0.4); opacity: 0; } 55% { transform: scale(1.15); opacity: 1; } 100% { transform: scale(1); opacity: 1; } }
+.sl-asc-crest .ob-emblem { position: relative; z-index: 1; }
+.sl-asc-halo { position: absolute; inset: -22%; border-radius: 50%; background: radial-gradient(circle, rgba(236, 72, 153, 0.38), rgba(124, 58, 237, 0.22) 45%, transparent 70%); animation: slAscHalo 2.8s ease-in-out infinite; }
+@keyframes slAscHalo { 0%, 100% { transform: scale(0.92); opacity: 0.75; } 50% { transform: scale(1.06); opacity: 1; } }
+.sl-asc-pill, .sl-asc-title, .sl-asc-quote, .sl-asc-stats, .sl-asc-actions { opacity: 0; transform: translateY(16px); }
+.sl-asc.is-in .sl-asc-pill { animation: slAscUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) 1.8s both; }
+.sl-asc.is-in .sl-asc-title { animation: slAscUp 0.7s cubic-bezier(0.16, 1, 0.3, 1) 2.05s both, slAscSheen 3.6s linear 2.05s infinite; }
+.sl-asc.is-in .sl-asc-quote { animation: slAscUp 0.7s cubic-bezier(0.16, 1, 0.3, 1) 2.45s both; }
+.sl-asc.is-in .sl-asc-stats { animation: slAscUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) 2.8s both; }
+.sl-asc.is-in .sl-asc-actions { animation: slAscUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) 3.15s both; }
+@keyframes slAscUp { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
+.sl-asc-pill { margin-top: 14px; padding: 8px 18px; border-radius: 999px; font-size: 13px; font-weight: 700; letter-spacing: 0.22em; text-transform: uppercase; color: #e9d5ff; background: rgba(139, 92, 246, 0.16); border: 1px solid rgba(196, 181, 253, 0.55); box-shadow: 0 0 24px rgba(124, 58, 237, 0.35); }
+.sl-asc-pill b { color: #f472b6; margin: 0 4px; }
+.sl-asc-title { margin: 14px 0 0; font-size: clamp(56px, 9vw, 112px); font-weight: 900; letter-spacing: -0.02em; line-height: 1; background: linear-gradient(100deg, #7c3aed, #ec4899 30%, #ffffff 50%, #ec4899 70%, #7c3aed); background-size: 300% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; filter: drop-shadow(0 0 28px rgba(236, 72, 153, 0.45)); }
+@keyframes slAscSheen { from { background-position: 100% 0; } to { background-position: -200% 0; } }
+.sl-asc-quote { margin: 22px 0 0; max-width: 720px; padding: 20px 30px; border-radius: 18px; font-size: 21px; font-weight: 500; line-height: 1.45; color: rgba(255, 255, 255, 0.88); background: linear-gradient(160deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.02)); border: 1px solid rgba(196, 181, 253, 0.22); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), inset 0 -1px 0 rgba(0, 0, 0, 0.4), 0 20px 60px rgba(0, 0, 0, 0.45); text-shadow: 0 1px 0 rgba(0, 0, 0, 0.6), 0 -1px 0 rgba(255, 255, 255, 0.06); }
+.sl-asc-stats { margin-top: 16px; font-size: 15px; color: rgba(255, 255, 255, 0.6); display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 4px 12px; }
+.sl-asc-stats i { width: 4px; height: 4px; border-radius: 50%; background: rgba(196, 181, 253, 0.6); }
+.sl-asc-actions { margin-top: 26px; display: flex; gap: 14px; }
+.sl-asc-btn { height: 48px; padding: 0 26px; border-radius: 999px; font: inherit; font-size: 16px; font-weight: 700; color: #fff; cursor: pointer; background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(196, 181, 253, 0.4); backdrop-filter: blur(10px); box-shadow: 0 0 22px rgba(124, 58, 237, 0.3); transition: transform 0.15s ease, box-shadow 0.2s ease, background 0.2s ease; }
+.sl-asc-btn:hover { transform: translateY(-2px); box-shadow: 0 0 34px rgba(236, 72, 153, 0.45); }
+.sl-asc-btn.primary { background: linear-gradient(135deg, rgba(124, 58, 237, 0.85), rgba(236, 72, 153, 0.85)); border-color: rgba(255, 255, 255, 0.35); }
+.sl-asc-btn:disabled { opacity: 0.7; cursor: default; transform: none; }
+@media (prefers-reduced-motion: reduce) { .sl-asc.is-in .sl-asc-shake { animation: none; } }
+/* After the ceremony: the sidebar rank card keeps a soft violet aura and a small crown. */
+#ob-level.sl-ascended { position: relative; box-shadow: 0 0 0 1px rgba(236, 72, 153, 0.35), 0 0 26px rgba(139, 92, 246, 0.32); }
+#ob-level.sl-ascended::after { content: ''; position: absolute; top: -9px; right: 14px; width: 22px; height: 16px; background: linear-gradient(135deg, #c4b5fd, #f472b6);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 16'%3E%3Cpath d='M2 14 0 3l6 4 6-7 6 7 6-4-2 11z' fill='white'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 16'%3E%3Cpath d='M2 14 0 3l6 4 6-7 6 7 6-4-2 11z' fill='white'/%3E%3C/svg%3E") center / contain no-repeat;
+  filter: drop-shadow(0 0 6px rgba(236, 72, 153, 0.8)); animation: slAscCrown 3.2s ease-in-out infinite; }
+@keyframes slAscCrown { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-2px); } }
+/* Replay Ascension, on the True Larper row in Settings > Badges */
+.sl-asc-replay { margin-left: 10px; height: 30px; padding: 0 14px; border-radius: 999px; font: inherit; font-size: 12.5px; font-weight: 700; color: #fff; cursor: pointer; background: linear-gradient(135deg, rgba(124, 58, 237, 0.7), rgba(236, 72, 153, 0.7)); border: 1px solid rgba(255, 255, 255, 0.25); box-shadow: 0 0 16px rgba(236, 72, 153, 0.35); white-space: nowrap; }
+.sl-asc-replay:hover { box-shadow: 0 0 24px rgba(236, 72, 153, 0.55); }
