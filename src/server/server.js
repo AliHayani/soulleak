@@ -924,19 +924,29 @@ const refreshServerScClientId = () => refreshSoundCloudClientId(true);
 // re-upload. With `match` ({ title, artist, duration }) results are ranked like YouTube candidates instead:
 // a result that doesn't match well enough is refused (so YouTube gets its turn), unless `match.lenient`.
 // SoundCloud is full of covers, remixes, blends and edits titled like the original, so a result must also be the
-// plain song: no words beyond the song name, the artist and harmless tags, and the same length (within 8 s).
+// plain song: no words beyond the song name, the artist and harmless tags, and the same length (within 3 s).
 const SC_HARMLESS_WORDS = new Set(['official', 'audio', 'video', 'music', 'lyrics', 'lyric', 'visualizer', 'explicit', 'clean', 'original', 'version', 'remastered', 'remaster', 'single', 'hq', 'hd', 'mp3', 'free', 'download', 'the', 'and', 'x']);
 function scNotPlainSong(t, match) {
   const norm = s => String(s || '').toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, ' ').replace(/\s+/g, ' ').trim();
   const want = Number(match.duration) || 0;
   const got = (t.duration || 0) / 1000;
-  if (want > 30 && got > 0 && Math.abs(got - want) > 8) return `length ${Math.round(got - want)} s off`;
+  // Re-uploads of the real recording are within a second or two; covers tagged with the artist's name drift more.
+  if (want > 30 && got > 0 && Math.abs(got - want) > 3) return `length ${Math.round(got - want)} s off`;
   const uploader = (t.user && t.user.username) || '';
   const allowed = new Set([match.title, match.artist, uploader, t.publisher_metadata && t.publisher_metadata.artist].flatMap(s => norm(s).split(' ')));
   // Featured artists and producers are fine: "(feat. X)", "(with X)", "(prod. X)".
   const title = String(t.title || '').replace(/[\(\[]\s*(?:feat|ft|featuring|with|prod)\b[^\)\]]*[\)\]]/gi, ' ');
   const extra = norm(title).split(' ').filter(w => w && !allowed.has(w) && !SC_HARMLESS_WORDS.has(w));
-  return extra.length ? `extra words "${extra.slice(0, 4).join(' ')}"` : '';
+  if (extra.length) return `extra words "${extra.slice(0, 4).join(' ')}"`;
+  // Covers are usually titled just like the song ("I Wanna Be Yours" by Silas), so the artist must be credited:
+  // the uploader or publisher is the artist ("laufey", "LaufeyOfficial"), or the title names them.
+  const compact = s => norm(s).replace(/\s+/g, '');
+  const wantArtist = compact(String(match.artist || '').split(/[,;&\/]|\bfeat\.?|\bft\.?|\bx\b/i)[0]);
+  if (wantArtist.length >= 2) {
+    const credited = [uploader, t.publisher_metadata && t.publisher_metadata.artist, t.title].some(s => compact(s).includes(wantArtist));
+    if (!credited) return `not credited to ${match.artist}`;
+  }
+  return '';
 }
 
 function pickSoundCloudMatch(col, match) {
@@ -2859,6 +2869,12 @@ function scoreImportedCandidate(targetTitle, targetArtist, targetDur, cand) {
     if (inCand && !inTarget) score -= 95;
     else if (inCand && inTarget) score += 22;
   }
+  // Other versions of a song, as whole words so "demo" doesn't hit "demons" or "rmx" a name.
+  const versionWords = /\b(acoustic|unplugged|stripped|piano version|orchestral|acapella|a cappella|demo|reprise|rmx|blend|flip|lofi|lo fi|tv size|sped|slowed)\b/g;
+  const tVersions = new Set(`${tTitle} ${norm(targetArtist)}`.match(versionWords) || []);
+  for (const w of new Set(cFull.match(versionWords) || [])) {
+    if (!tVersions.has(w)) score -= 95;
+  }
 
   const tDur = Number(targetDur) || 0;
   const cDur = Number(cand.duration) || 0;
@@ -3104,10 +3120,8 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
           if (s) return s;
         } catch (_) {}
       }
-      if (!s && (q || searchQ)) {
-        try { s = await fetchDirectSoundCloudStreamServer('', q || searchQ, scMatch); } catch (_) {}
-        if (s) return s;
-      }
+      // The quick lookup failed (common on some PCs): yt-dlp gets this exact video. SoundCloud comes after that
+      // (inside resolveYtCandidateStreamDlp), so a YouTube song never turns into somebody's SoundCloud upload first.
       try {
         return await resolveYtCandidateStreamDlp(candId);
       } catch (_) {
@@ -3193,13 +3207,14 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
       const maxCand = needYtAuth ? 1 : 3;
       const needScRace = failedYtIds.size > 0 || !cleanId || !isRealYtId;
       const scFallback = needScRace
-        // YouTube gets a 1.5 s head start: SoundCloud usually answers first, and the artist's own YouTube upload
-        // is the surest original. SoundCloud still wins when YouTube is slow or has nothing.
+        // YouTube gets a 4 s head start: SoundCloud usually answers first, and the artist's own YouTube upload
+        // is the surest original (4 s leaves time for yt-dlp when the quick lookup fails). SoundCloud still wins
+        // when YouTube is slow or has nothing.
         ? (async () => {
           const raceStart = Date.now();
           const u = await fetchDirectSoundCloudStreamServer('', q || searchQ, scMatch);
           if (!u) throw new Error('no sc');
-          const wait = 1500 - (Date.now() - raceStart);
+          const wait = 4000 - (Date.now() - raceStart);
           if (wait > 0) await new Promise(r => setTimeout(r, wait));
           return { url: u, id: null };
         })()
