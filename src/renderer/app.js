@@ -4802,6 +4802,15 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
 
       track._preloadedStreamUrl = data.streamUrl;
+      // For Copy diagnostics: where this song really plays from (host only, the full link carries tokens).
+      try {
+        const raw = data.rawStreamUrl || data.streamUrl || '';
+        state.lastStreamSource = {
+          id: track.id,
+          kind: data.isDownload ? 'downloaded file' : (data.isLocal ? 'offline cache' : (data.isHls ? 'HLS stream' : 'stream')),
+          host: /^https?:/i.test(raw) ? new URL(raw).hostname : ''
+        };
+      } catch (_) { state.lastStreamSource = null; }
 
       if (hlsInstance) {
         hlsInstance.destroy();
@@ -29027,10 +29036,58 @@ function bindCoverHoldZoom(wrapEl) {
     btnCloseShortcutsModal.addEventListener('click', () => closeModal(shortcutsModal));
   }
 
+  // What is playing right now and how: the upload it was matched to, its real length against the expected one
+  // (a sped-up re-upload is clearly shorter), the effects and speed actually applied, and the audio device.
+  async function playbackDiagnostics() {
+    const lines = ['--- playback ---'];
+    const fmt = (s) => (Number.isFinite(s) && s > 0) ? `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}` : '?';
+    try {
+      const t = state.currentTrack;
+      const audio = el.nativeAudio;
+      if (!t) lines.push('Nothing playing');
+      else {
+        lines.push(`Song: ${t.title || '?'} by ${t.artist || '?'} [${t.platform || '?'}] id ${t.id || '?'}`);
+        const src = state.lastStreamSource && state.lastStreamSource.id === t.id ? state.lastStreamSource : null;
+        lines.push(`Source: ${src ? `${src.kind}${src.host ? ` from ${src.host}` : ''}` : 'unknown'}`);
+        const want = Number(t.duration) || 0;
+        const got = audio ? Number(audio.duration) : 0;
+        let note = '';
+        if (want > 30 && Number.isFinite(got) && got > 30) {
+          const ratio = got / want;
+          if (ratio < 0.92) note = ' <- SHORTER than the song: probably a sped-up upload';
+          else if (ratio > 1.08) note = ' <- LONGER than the song: probably a slowed or extended upload';
+        }
+        lines.push(`Length: expected ${fmt(want)}, playing ${fmt(got)}${note}`);
+        if (audio) lines.push(`Position ${fmt(audio.currentTime)}, rate ${audio.playbackRate}, keep pitch ${audio.preservesPitch !== false}, paused ${audio.paused}`);
+      }
+      const s = state.audioSettings || {};
+      const tags = typeof fxTagList === 'function' ? fxTagList() : [];
+      lines.push(`Effects: ${tags.length ? tags.join(', ') : 'none (Original)'} | preset ${state.activePresetId || 'none'} | speed ${s.speed ?? 1}, speed+pitch ${s.speedPitch ?? 1}, pitch ${s.pitch ?? 0} st | HQ ${state.hqEnabled ? 'on' : 'off'}`);
+      const ctx = audioEngine && audioEngine.ctx;
+      if (ctx) lines.push(`Audio engine: ${ctx.sampleRate} Hz, ${ctx.state}, latency ${Math.round((ctx.baseLatency || 0) * 1000)}+${Math.round((ctx.outputLatency || 0) * 1000)} ms`);
+      let device = currentAudioOutputDeviceId || 'default';
+      try {
+        const outs = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === 'audiooutput');
+        const hit = outs.find((d) => d.deviceId === (currentAudioOutputDeviceId || 'default')) || outs.find((d) => d.deviceId === 'default');
+        if (hit && hit.label) device = hit.label;
+      } catch (_) {}
+      lines.push(`Output device: ${device}`);
+      const oc = typeof offlineCfg === 'function' ? offlineCfg() : null;
+      lines.push(`Online ${navigator.onLine}${oc ? ` | Auto-offline ${oc.on ? 'on' : 'off'}, after ${oc.after} plays, ${oc.limitGB} GB` : ''}`);
+    } catch (e) {
+      lines.push(`(playback info failed: ${e && e.message})`);
+    }
+    return lines.join('\n');
+  }
+
   if (btnCopyDiagnostics) {
     btnCopyDiagnostics.addEventListener('click', async () => {
       if (window.electronAPI && typeof window.electronAPI.getDiagnostics === 'function') {
-        navigator.clipboard.writeText(await window.electronAPI.getDiagnostics());
+        const base = await window.electronAPI.getDiagnostics();
+        const play = await playbackDiagnostics();
+        // The app details first, then what's playing, then the log (which names the upload each song was matched to).
+        const cut = base.indexOf('--- last log lines ---');
+        navigator.clipboard.writeText(cut >= 0 ? `${base.slice(0, cut)}${play}\n${base.slice(cut)}` : `${base}\n${play}`);
         showToast('Diagnostics copied. Paste it into your report', 'info');
       }
     });
