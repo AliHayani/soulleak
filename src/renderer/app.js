@@ -17233,31 +17233,59 @@ function bindCoverHoldZoom(wrapEl) {
     };
     img.src = imgSrc;
   }
-  function applyHomeAppIcon(val) {
-    const chosen = val || savedAppIcon();
+  // What the Home button shows: 'house' (the default outline) or an icon the user picked.
+  const HOME_HOUSE = 'house';
+  const homeHouseSvg = (size) => '<svg width="' + size + '" height="' + size + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>';
+  function shownHomeIcon() {
+    return localStorage.getItem('sl_home_icon') || HOME_HOUSE;
+  }
+  function renderHomeButtonIcon(shown) {
+    const slot = document.querySelector('#nav-discover .ob-home-icon');
+    if (!slot) return;
+    if (shown === HOME_HOUSE) { slot.innerHTML = homeHouseSvg(20); return; }
+    const img = document.createElement('img');
+    img.className = 'ob-home-app-icon';
+    img.alt = '';
+    img.draggable = false;
+    img.src = resolveAppIconSrc(shown);
+    img.onerror = () => { slot.innerHTML = homeHouseSvg(20); };
+    slot.replaceChildren(img);
+  }
+  function applyHomeAppIcon(val, picked) {
+    if (picked) localStorage.setItem('sl_home_icon', val);
+    const shown = shownHomeIcon();
+    const chosen = shown === HOME_HOUSE ? savedAppIcon() : shown;
     localStorage.setItem('riff_app_icon', chosen);
     const homeImg = document.getElementById('nav-home-app-icon');
     if (homeImg) homeImg.src = resolveAppIconSrc(chosen);
+    renderHomeButtonIcon(shown);
     const grid = document.getElementById('app-icon-picker-grid');
     if (grid) {
       grid.querySelectorAll('.app-icon-option').forEach(btn => {
-        btn.classList.toggle('active', btn.dataset.icon === chosen);
+        btn.classList.toggle('active', btn.dataset.icon === shown);
       });
     }
     updateHomeBannerColorsFromIcon(resolveAppIconSrc(chosen));
   }
   function initAppIconPicker() {
     const grid = document.getElementById('app-icon-picker-grid');
-    const saved = savedAppIcon();
+    const saved = shownHomeIcon();
     if (grid) {
       grid.innerHTML = '';
+      const house = document.createElement('button');
+      house.type = 'button';
+      house.className = 'app-icon-option' + (saved === HOME_HOUSE ? ' active' : '');
+      house.dataset.icon = HOME_HOUSE;
+      house.innerHTML = '<div class="app-icon-option-box app-icon-option-house">' + homeHouseSvg(24) + '</div><span class="app-icon-option-label">House</span>';
+      house.addEventListener('click', () => applyHomeAppIcon(HOME_HOUSE, true));
+      grid.appendChild(house);
       RIFF_APP_ICONS.forEach(item => {
         const btn = document.createElement('button');
         btn.type = 'button';
         btn.className = 'app-icon-option' + (saved === item.id ? ' active' : '');
         btn.dataset.icon = item.id;
         btn.innerHTML = '<div class="app-icon-option-box"><img src="' + resolveAppIconSrc(item.id) + '" alt="' + item.label + '" draggable="false" /></div><span class="app-icon-option-label">' + item.label + '</span>';
-        btn.addEventListener('click', () => applyHomeAppIcon(item.id));
+        btn.addEventListener('click', () => applyHomeAppIcon(item.id, true));
         grid.appendChild(btn);
       });
     }
@@ -17265,7 +17293,7 @@ function bindCoverHoldZoom(wrapEl) {
     if (btnCustom && window.electronAPI && window.electronAPI.pickMedia) {
       btnCustom.addEventListener('click', async () => {
         const url = await window.electronAPI.pickMedia();
-        if (url) applyHomeAppIcon(url);
+        if (url) applyHomeAppIcon(url, true);
       });
     }
     applyHomeAppIcon(saved);
@@ -20133,7 +20161,8 @@ function bindCoverHoldZoom(wrapEl) {
     if (urlInput) urlInput.value = imp.url;
     document.getElementById('btn-confirm-link-import')?.click();
   }
-  if (window.electronAPI && window.electronAPI.onWelcomeResult) window.electronAPI.onWelcomeResult((d) => applyWelcomeResult(d));
+  // Applied once the rest of startup has run: the import and settings buttons it clicks get their handlers further down.
+  if (window.electronAPI && window.electronAPI.onWelcomeResult) window.electronAPI.onWelcomeResult((d) => setTimeout(() => applyWelcomeResult(d), 0));
 
   function checkCompactLayout() {
     const isMini = window.innerWidth <= 520;

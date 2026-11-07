@@ -1,6 +1,10 @@
 const { contextBridge, ipcRenderer, webFrame } = require('electron');
 
 
+let welcomeResultPending = null;
+let welcomeResultCb = null;
+ipcRenderer.on('welcome-result', (e, d) => { if (welcomeResultCb) welcomeResultCb(d); else welcomeResultPending = d; });
+
 contextBridge.exposeInMainWorld('electronAPI', {
   serverToken: (() => {
     const arg = process.argv.find((a) => a.startsWith('--riff-token='));
@@ -85,7 +89,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   setMediaKeys: (v) => ipcRenderer.send('set-media-keys', v),
   mediaKeysActive: () => ipcRenderer.send('media-keys-active'),
   welcomeFinish: (detail) => ipcRenderer.send('welcome-finish', detail),
-  onWelcomeResult: (cb) => ipcRenderer.on('welcome-result', (e, d) => cb(d)),
+  // The setup result is sent the moment index.html loads, before app.js has set up its listener: keep it until asked.
+  onWelcomeResult: (cb) => { welcomeResultCb = cb; if (welcomeResultPending) { const d = welcomeResultPending; welcomeResultPending = null; cb(d); } },
   getLauncherInfo: () => ipcRenderer.invoke('launcher-info'),
   installLauncher: () => ipcRenderer.invoke('install-launcher'),
   listThemes: () => ipcRenderer.invoke('themes-list'),
