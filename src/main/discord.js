@@ -57,6 +57,8 @@ function scheduleReconnect() {
   }, RECONNECT_DELAY_MS);
 }
 
+const SOULLEAK_URL = 'https://github.com/AliHayani/soulleak';
+
 function _setActivity(trackInfo) {
   if (!rpcClient || !isConnected || !trackInfo) return;
   const now = Math.floor(Date.now() / 1000);
@@ -89,9 +91,8 @@ function _setActivity(trackInfo) {
   else if (trackInfo.duration && trackInfo.duration > 0) {
     baseActivity.timestamps.end = startEpoch + Math.floor(trackInfo.duration);
   }
-  if (trackInfo.url && typeof trackInfo.url === 'string' && trackInfo.url.startsWith('https://') && trackInfo.url.length <= 512) {
-    baseActivity.buttons = [{ label: 'Listen', url: trackInfo.url }];
-  }
+  // The button sends people to Soulleak's GitHub page (not the song's YouTube/SoundCloud link), to spread the app.
+  baseActivity.buttons = [{ label: 'Get Soulleak', url: SOULLEAK_URL }];
   const primaryActivity = showArtistStatus
     ? Object.assign({}, baseActivity, { status_display_type: 1 })
     : baseActivity;
