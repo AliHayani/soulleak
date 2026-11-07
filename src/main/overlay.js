@@ -21,10 +21,17 @@ function createOverlay(getMainWindow) {
     return { x: Math.round(x), y: Math.round(y), width: SIZE.width, height: SIZE.height };
   }
 
+  let menuExtra = 0;
   function place(area) {
     if (!win) return;
     placing = true;
-    win.setBounds(boundsFor(corner, area));
+    const b = boundsFor(corner, area);
+    // An open preset list adds height on the side away from the screen edge.
+    if (menuExtra) {
+      b.height += menuExtra;
+      if (corner.startsWith('bottom')) b.y -= menuExtra;
+    }
+    win.setBounds(b);
     setTimeout(() => { placing = false; }, 150);
   }
 
@@ -99,6 +106,9 @@ function createOverlay(getMainWindow) {
       notifyMain(false);
       return;
     }
+    // Always reopen at the normal size, preset list closed.
+    menuExtra = 0;
+    if (win.webContents) win.webContents.send('overlay-menu-placed', 'closed');
     // Open on the screen the cursor is on, which is usually where the game is.
     place(screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea);
     win.showInactive();
@@ -121,7 +131,7 @@ function createOverlay(getMainWindow) {
       if (!win || win.isDestroyed()) return clearInterval(dragTimer);
       const c = screen.getCursorScreenPoint();
       placing = true;
-      win.setBounds({ x: c.x - offset.x, y: c.y - offset.y, width: SIZE.width, height: SIZE.height });
+      win.setBounds({ x: c.x - offset.x, y: c.y - offset.y, width: SIZE.width, height: SIZE.height + menuExtra });
     }, 16);
   });
   ipcMain.on('overlay-drag-end', () => {
@@ -132,6 +142,12 @@ function createOverlay(getMainWindow) {
   });
 
   ipcMain.on('overlay-toggle', toggle);
+  ipcMain.on('overlay-menu', (e, extra) => {
+    if (!win || win.isDestroyed()) return;
+    menuExtra = Math.max(0, Math.min(420, Math.round(Number(extra) || 0)));
+    place(screen.getDisplayMatching(win.getBounds()).workArea);
+    win.webContents.send('overlay-menu-placed', corner.startsWith('bottom') ? 'up' : 'down');
+  });
   ipcMain.on('overlay-state', (e, state) => {
     lastState = state;
     if (win && !win.isDestroyed()) win.webContents.send('overlay-state', state);

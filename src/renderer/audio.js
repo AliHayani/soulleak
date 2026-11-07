@@ -239,6 +239,20 @@
           this.fadeGain.gain.value = 1.0;
           this.masterGain.connect(this.normGain);
           this.normGain.connect(this.normLimiter);
+          this.hpPreamp = this.ctx.createGain();
+          this.hpFilters = [];
+          // Signature preset slot (see _applySignature).
+          this.sigIn = this.ctx.createGain();
+          this.sigIn.channelCount = 2;
+          this.sigIn.channelCountMode = 'explicit';
+          this.sigIn.channelInterpretation = 'speakers';
+          this.sigDry = this.ctx.createGain();
+          this.sigOut = this.ctx.createGain();
+          this.masterGain.disconnect(this.normGain);
+          this.masterGain.connect(this.sigIn);
+          this.sigIn.connect(this.sigDry);
+          this.sigDry.connect(this.sigOut);
+          this.sigOut.connect(this.normGain);
           this.normLimiter.connect(this.analyserNode);
           // 8D sits between the analyser and the fade stage: a dry path plus an orbiting HRTF panner,
           // mixed by audioSettings.spatial8d (0 = off, 1 = full orbit).
@@ -251,6 +265,7 @@
 
           this.graphInitialized = true;
           this._updateRouting();
+          this._applyHeadphoneEq();
         } catch (e) {
           console.warn('[AudioEngine] Graph initialization notice:', e);
         }
@@ -369,6 +384,260 @@
       } catch (e) {}
     }
 
+
+    // profile: { preamp: dB, filters: [[type, fc, gainDb, q], ...] } (type 0 peaking, 1 low shelf, 2 high shelf), or null.
+    setHeadphoneEq(profile) {
+      this.headphoneEq = profile && Array.isArray(profile.filters) && profile.filters.length ? profile : null;
+      if (this.graphInitialized) this._applyHeadphoneEq();
+    }
+
+    _applyHeadphoneEq() {
+      if (!this.ctx || !this.masterGain || !this.normGain || !this.hpPreamp) return;
+      const src = this.sigOut || this.masterGain;
+      try { src.disconnect(); } catch (e) {}
+      try { this.hpPreamp.disconnect(); } catch (e) {}
+      (this.hpFilters || []).forEach((f) => { try { f.disconnect(); } catch (e) {} });
+      this.hpFilters = [];
+      const prof = this.headphoneEq;
+      if (!prof) {
+        src.connect(this.normGain);
+        return;
+      }
+      const TYPES = ['peaking', 'lowshelf', 'highshelf'];
+      const nyquist = this.ctx.sampleRate / 2;
+      this.hpPreamp.gain.value = Math.pow(10, Math.max(-24, Math.min(0, Number(prof.preamp) || 0)) / 20);
+      let last = this.hpPreamp;
+      prof.filters.slice(0, 16).forEach(([type, fc, gain, q]) => {
+        if (!(fc > 0 && fc < nyquist)) return;
+        const f = this.ctx.createBiquadFilter();
+        f.type = TYPES[type] || 'peaking';
+        f.frequency.value = fc;
+        f.gain.value = Math.max(-24, Math.min(24, Number(gain) || 0));
+        // AutoEq's shelf Q is the RBJ cookbook Q, which Web Audio shelves ignore: they always use slope 1 (Q 0.707).
+        if (f.type === 'peaking') f.Q.value = Math.max(0.05, Math.min(30, Number(q) || 1));
+        last.connect(f);
+        last = f;
+        this.hpFilters.push(f);
+      });
+      src.connect(this.hpPreamp);
+      last.connect(this.normGain);
+    }
+
+    // ---- Signature presets ----
+    // Stereo noise impulse with an exponential decay to -60 dB over `seconds`; 'dark' rolls off its highs.
+    _impulse(seconds, variant) {
+      const ctx = this.ctx;
+      const key = ctx.sampleRate + ':' + seconds + ':' + (variant || '');
+      this._irCache = this._irCache || {};
+      if (this._irCache[key]) return this._irCache[key];
+      const rate = ctx.sampleRate;
+      const len = Math.max(1, Math.floor(rate * seconds));
+      const buf = ctx.createBuffer(2, len, rate);
+      for (let ch = 0; ch < 2; ch++) {
+        const d = buf.getChannelData(ch);
+        let lp = 0;
+        const smooth = variant === 'dark' ? 0.82 : (variant === 'room' ? 0.35 : 0.55);
+        for (let i = 0; i < len; i++) {
+          const n = Math.random() * 2 - 1;
+          lp = lp * smooth + n * (1 - smooth);
+          // Tiled room: a few hard early reflections in the first 30 ms.
+          const early = variant === 'room' && i < rate * 0.03 && Math.random() < 0.002 ? (Math.random() * 2 - 1) * 4 : 0;
+          d[i] = (lp + early) * Math.exp(-6.9 * i / len);
+        }
+      }
+      this._irCache[key] = buf;
+      return buf;
+    }
+
+    _softClip(k) {
+      const n = 1024;
+      const curve = new Float32Array(n);
+      // tanh(kx)/k: same level for normal signals (slope 1 at 0), only the peaks round off.
+      for (let i = 0; i < n; i++) {
+        const x = (i * 2) / (n - 1) - 1;
+        curve[i] = Math.tanh(k * x) / k;
+      }
+      return curve;
+    }
+
+    // Each builder returns { input, output, nodes, oscs, params }.
+    _buildSignature(name) {
+      const ctx = this.ctx;
+      const nodes = [];
+      const oscs = [];
+      const N = (node) => { nodes.push(node); return node; };
+      const gain = (v) => { const g = N(ctx.createGain()); g.gain.value = v; return g; };
+      const biquad = (type, f, q, g) => { const b = N(ctx.createBiquadFilter()); b.type = type; b.frequency.value = f; if (q !== undefined) b.Q.value = q; if (g !== undefined) b.gain.value = g; return b; };
+      const delay = (t, max) => { const d = N(ctx.createDelay(max || 0.1)); d.delayTime.value = t; return d; };
+      const conv = (sec, v) => { const c = N(ctx.createConvolver()); c.buffer = this._impulse(sec, v); return c; };
+      const shaper = (k) => { const w = N(ctx.createWaveShaper()); w.curve = this._softClip(k); w.oversample = '2x'; return w; };
+      const osc = (type, f) => { const o = ctx.createOscillator(); o.type = type; o.frequency.value = f; oscs.push(o); return o; };
+      const input = gain(1);
+      const output = gain(1);
+      const params = {};
+
+      if (name === 'bathroom') {
+        // Through the wall: highs gone, the kick in the floor, a small tiled room, a 12 ms Haas offset.
+        const lp = biquad('lowpass', 290, 1.4);
+        const thump = biquad('peaking', 68, 1.8, 7);
+        input.connect(lp); lp.connect(thump);
+        const roomDry = gain(0.65);
+        const room = conv(0.45, 'room');
+        const roomWet = gain(0.35);
+        const sum = gain(1);
+        thump.connect(roomDry); roomDry.connect(sum);
+        thump.connect(room); room.connect(roomWet); roomWet.connect(sum);
+        const split = N(ctx.createChannelSplitter(2));
+        const merge = N(ctx.createChannelMerger(2));
+        const haas = delay(0.012);
+        sum.connect(split);
+        split.connect(merge, 0, 0);
+        split.connect(haas, 1); haas.connect(merge, 0, 1);
+        merge.connect(output);
+        Object.assign(params, { lp, roomWet, roomDry });
+      } else if (name === 'ethereal') {
+        // Dry centre kept, plus a strong tape-warm, chorus-widened 4.2 s cathedral with a shimmer shelf.
+        // (The first 70/30 mix was so subtle it sounded like nothing.)
+        const dry = gain(0.7);
+        input.connect(dry); dry.connect(output);
+        const tape = shaper(1.6);
+        input.connect(tape);
+        const split = N(ctx.createChannelSplitter(2));
+        const merge = N(ctx.createChannelMerger(2));
+        const dl = delay(0.018), dr = delay(0.018);
+        const lfo = osc('sine', 0.35);
+        const depthL = gain(0.0035), depthR = gain(-0.0035);
+        lfo.connect(depthL); depthL.connect(dl.delayTime);
+        lfo.connect(depthR); depthR.connect(dr.delayTime);
+        tape.connect(split);
+        split.connect(dl, 0); split.connect(dr, 1);
+        dl.connect(merge, 0, 0); dr.connect(merge, 0, 1);
+        const cathedral = conv(4.2, 'hall');
+        const shimmer = biquad('highshelf', 6000, undefined, 6);
+        const chorusDirect = gain(0.45);
+        const wet = gain(0.75);
+        merge.connect(cathedral); cathedral.connect(shimmer); shimmer.connect(wet);
+        merge.connect(chorusDirect); chorusDirect.connect(wet);
+        wet.connect(output);
+      } else if (name === 'soulbleed') {
+        // Mid/side: side +4.5 dB, mid above 300 Hz -8 dB (bass and kick untouched), and that mid fed to a dark tail.
+        const split = N(ctx.createChannelSplitter(2));
+        input.connect(split);
+        const mid = gain(0.5), side = gain(0.5), invR = gain(-1);
+        split.connect(mid, 0); split.connect(mid, 1);
+        split.connect(side, 0); split.connect(invR, 1); invR.connect(side);
+        const sideUp = gain(Math.pow(10, 4.5 / 20));
+        side.connect(sideUp);
+        const midLow = biquad('lowpass', 300, 0.707);
+        const midHigh = biquad('highpass', 300, 0.707);
+        const midHighDown = gain(Math.pow(10, -8 / 20));
+        mid.connect(midLow); mid.connect(midHigh); midHigh.connect(midHighDown);
+        const midOut = gain(1);
+        midLow.connect(midOut); midHighDown.connect(midOut);
+        const sideNeg = gain(-1);
+        sideUp.connect(sideNeg);
+        const merge = N(ctx.createChannelMerger(2));
+        midOut.connect(merge, 0, 0); midOut.connect(merge, 0, 1);
+        sideUp.connect(merge, 0, 0); sideNeg.connect(merge, 0, 1);
+        merge.connect(output);
+        const tap = delay(0.27, 1);
+        const fb = gain(0.32);
+        tap.connect(fb); fb.connect(tap);
+        const dark = biquad('lowpass', 2400, 0.707);
+        const ghost = conv(2.4, 'dark');
+        const ghostOut = gain(0.45);
+        midHigh.connect(tap); tap.connect(dark); dark.connect(ghost); ghost.connect(ghostOut); ghostOut.connect(output);
+      } else if (name === 'vhs') {
+        // Wow (0.55 Hz sine, ±1.2 ms) + flutter (6.5 Hz triangle, ±0.15 ms) on a 10 ms delay, tape warmth,
+        // highs above 9.5 kHz rolled off, mud below 55 Hz cut.
+        const mud = biquad('highpass', 55, 0.707);
+        const tapeDelay = delay(0.010);
+        const wow = osc('sine', 0.55), flutter = osc('triangle', 6.5);
+        const wowDepth = gain(0.0012), flutterDepth = gain(0.00015);
+        wow.connect(wowDepth); wowDepth.connect(tapeDelay.delayTime);
+        flutter.connect(flutterDepth); flutterDepth.connect(tapeDelay.delayTime);
+        const warmth = shaper(2.2);
+        const body = biquad('peaking', 850, 0.8, 1.5);
+        const roll = biquad('lowpass', 9500, 0.707);
+        input.connect(mud); mud.connect(tapeDelay); tapeDelay.connect(warmth); warmth.connect(body); body.connect(roll); roll.connect(output);
+      } else {
+        return null;
+      }
+      oscs.forEach((o) => o.start());
+      return { input, output, nodes, oscs, params };
+    }
+
+    _applySignature(name) {
+      const known = ['bathroom', 'ethereal', 'soulbleed', 'vhs'];
+      name = known.includes(name) ? name : '';
+      if (!this.ctx || !this.sigIn) return;
+      const current = this._sig ? this._sig.name : '';
+      if (current === name) return;
+      const ctx = this.ctx;
+      const now = ctx.currentTime;
+      const T = 0.35;
+      const old = this._sig;
+      this._sig = null;
+      if (old) {
+        const g = old.wet.gain;
+        g.cancelScheduledValues(now); g.setValueAtTime(g.value, now); g.linearRampToValueAtTime(0, now + T);
+        setTimeout(() => this._teardownSignature(old), T * 1000 + 150);
+      }
+      const dry = this.sigDry.gain;
+      dry.cancelScheduledValues(now); dry.setValueAtTime(dry.value, now);
+      const chain = name ? this._buildSignature(name) : null;
+      if (!chain) { dry.linearRampToValueAtTime(1, now + T); return; }
+      chain.name = name;
+      chain.wet = ctx.createGain();
+      // The fade-in waits 20 ms so delay lines (Haas, chorus, tape) are full before they are heard.
+      const L = 0.02;
+      chain.wet.gain.setValueAtTime(0, now);
+      chain.wet.gain.setValueAtTime(0, now + L);
+      this.sigIn.connect(chain.input);
+      chain.output.connect(chain.wet);
+      chain.wet.connect(this.sigOut);
+      chain.wet.gain.linearRampToValueAtTime(1, now + L + T);
+      dry.setValueAtTime(dry.value, now + L);
+      dry.linearRampToValueAtTime(0, now + L + T);
+      this._sig = chain;
+      if (name === 'bathroom') this._applyDoor(this.door || 0, true);
+    }
+
+    _teardownSignature(chain) {
+      try { this.sigIn.disconnect(chain.input); } catch (e) {}
+      chain.oscs.forEach((o) => { try { o.stop(); } catch (e) {} try { o.disconnect(); } catch (e) {} });
+      [chain.input, ...chain.nodes, chain.output, chain.wet].forEach((n) => { try { n.disconnect(); } catch (e) {} });
+    }
+
+    // 3AM Bathroom's door: 0 = shut (290 Hz, 35 % room), 1 = open (20 kHz, no room). Exponential sweep.
+    setDoor(amount) {
+      this.door = Math.max(0, Math.min(1, Number(amount) || 0));
+      this._applyDoor(this.door, false);
+    }
+
+    _applyDoor(d, instant) {
+      const c = this._sig;
+      if (!c || c.name !== 'bathroom' || !this.ctx) return;
+      const now = this.ctx.currentTime;
+      const f = 290 * Math.pow(20000 / 290, d);
+      const wet = 0.35 * (1 - d);
+      if (instant) {
+        c.params.lp.frequency.setValueAtTime(f, now);
+        c.params.roomWet.gain.setValueAtTime(wet, now);
+        c.params.roomDry.gain.setValueAtTime(1 - wet, now);
+      } else {
+        c.params.lp.frequency.setTargetAtTime(f, now, 0.05);
+        c.params.roomWet.gain.setTargetAtTime(wet, now, 0.05);
+        c.params.roomDry.gain.setTargetAtTime(1 - wet, now, 0.05);
+      }
+    }
+
+    // Short glide instead of a jump, so a moving setting never clicks.
+    _glide(param, value) {
+      if (!param) return;
+      if (this.ctx && param.setTargetAtTime) param.setTargetAtTime(value, this.ctx.currentTime, 0.012);
+      else param.value = value;
+    }
 
     setHqEnabled(enabled) {
       this.hqEnabled = enabled;
@@ -495,23 +764,24 @@
       if (s.eq) this.setEq(s.eq);
       if (s.eqBands) this.setEqBands(s.eqBands);
 
-      if (this.reverbGain) this.reverbGain.gain.value = s.reverb / 100;
+      if (this.reverbGain) this._glide(this.reverbGain.gain, s.reverb / 100);
 
-      if (this.delayGain) this.delayGain.gain.value = s.echo / 100;
+      if (this.delayGain) this._glide(this.delayGain.gain, s.echo / 100);
 
       if (this.distortionNode && this.distortionGain) {
         if (s.distortion > 0) {
           this.distortionNode.curve = this._makeDistortionCurve(s.distortion);
-          this.distortionGain.gain.value = (s.distortion / 100) * 0.75;
-          if (this.dryGain) this.dryGain.gain.value = 1.0 - (s.distortion / 100) * 0.4;
+          this._glide(this.distortionGain.gain, (s.distortion / 100) * 0.75);
+          if (this.dryGain) this._glide(this.dryGain.gain, 1.0 - (s.distortion / 100) * 0.4);
         } else {
-          this.distortionGain.gain.value = 0.0;
-          if (this.dryGain) this.dryGain.gain.value = 1.0;
+          this._glide(this.distortionGain.gain, 0.0);
+          if (this.dryGain) this._glide(this.dryGain.gain, 1.0);
         }
       }
 
       if (this.graphInitialized) this._updateRouting();
       this._applySpatial(s.spatial8d || 0);
+      this._applySignature(s.signature || '');
       this._applyMasterVolume();
     }
 
@@ -581,7 +851,9 @@
         } catch (_) {}
       }
       if (this.masterGain) {
-        this.masterGain.gain.value = this.isMuted ? 0 : (Number.isFinite(this.audioSettings.volume) ? this.audioSettings.volume : 1.0);
+        try {
+          this.masterGain.gain.value = this.isMuted ? 0 : (Number.isFinite(this.audioSettings.volume) ? this.audioSettings.volume : 1.0);
+        } catch (e) {}
       }
     }
 
@@ -590,7 +862,7 @@
       const eqMod = s.eq ? (s.eq.low !== 0 || s.eq.mid !== 0 || s.eq.high !== 0) : false;
       const eqBandsMod = Array.isArray(s.eqBands) ? s.eqBands.some(v => v !== 0) : false;
       return s.speed !== 1.0 || s.speedPitch !== 1.0 || s.pitch !== 0 ||
-        s.reverb !== 0 || s.distortion !== 0 || s.volume !== 1.0 || s.echo !== 0 || (s.spatial8d || 0) > 0 || eqMod || eqBandsMod;
+        s.reverb !== 0 || s.distortion !== 0 || s.volume !== 1.0 || s.echo !== 0 || (s.spatial8d || 0) > 0 || !!s.signature || eqMod || eqBandsMod;
     }
 
 

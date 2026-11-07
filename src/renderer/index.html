@@ -1283,7 +1283,7 @@
                 <span class="setting-name" data-i18n>Playbar visualizer opacity</span>
                 <span class="setting-val" id="val-bar-viz-opacity">22%</span>
               </div>
-              <input type="range" class="pill-range" id="slider-bar-viz-opacity" min="5" max="85" step="1" value="22">
+              <input type="range" class="pill-range" id="slider-bar-viz-opacity" min="5" max="85" step="1" value="45">
             </div>
             <div class="setting-item" id="setting-bar-viz-sens">
               <div class="setting-item-top">
@@ -1410,7 +1410,7 @@
               <div class="setting-item-top" style="justify-content: space-between; align-items: center; width: 100%;">
                 <div style="display: flex; flex-direction: column; gap: 2px;">
                   <span class="setting-name">Customize sidebar & home layout</span>
-                  <span style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Drag and drop to reorder sidebar navigation items and home page sections</span>
+                  <span style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Drag and drop to reorder the sidebar and the Home sections (Home order applies to the Spotify layout)</span>
                 </div>
                 <button type="button" class="btn-outline-pill" id="btn-reset-sidebar-order" style="height: 30px; padding: 0 12px; font-size: 12px;">Reset</button>
               </div>
@@ -1961,7 +1961,7 @@
               <div class="setting-item-top" style="align-items: center;">
                 <div style="display: flex; flex-direction: column; gap: 2px;">
                   <span class="setting-name">Save sound settings</span>
-                  <span style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Automatically save High Quality, effects and the active preset</span>
+                  <span style="font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline);">Automatically save your effects and the active preset</span>
                 </div>
                 <button class="effect-switch-btn" id="btn-persist-sound-settings"><span class="thumb"></span></button>
               </div>
@@ -2015,6 +2015,7 @@
               <input type="range" class="pill-range" id="slider-crossfade" min="0" max="12" step="1" value="0">
               <div class="setting-hints"><span>Off</span><span>6s</span><span>12s</span></div>
             </div>
+
 
             <div class="setting-item">
               <div class="setting-item-top">
@@ -3210,6 +3211,20 @@
             </div>
           </div>
           <div class="audio-panel" data-audio-panel="enhance">
+          <div class="setting-item hp-eq-card" id="hp-eq-card">
+            <div class="setting-item-top">
+              <div class="hp-eq-info">
+                <span class="setting-name">Headphone correction</span>
+                <span class="hp-eq-current" id="hp-eq-current">Pick your headphones and Soulleak tunes the sound to them</span>
+              </div>
+              <button class="effect-switch-btn" id="toggle-hp-eq" type="button"><span class="thumb"></span></button>
+            </div>
+            <div class="hp-eq-search-wrap">
+              <input class="hp-eq-input" id="hp-eq-search" type="text" placeholder="Search your headphones or earbuds" spellcheck="false" autocomplete="off">
+              <div class="hp-eq-results" id="hp-eq-results" role="listbox" hidden></div>
+            </div>
+            <span class="hp-eq-credit">Measurements from AutoEq, for 6,000+ headphones</span>
+          </div>
           <div class="setting-item hq-enhancer-card">
             <div class="setting-item-top">
               <div class="effect-info">
@@ -4067,7 +4082,7 @@
 
         <div class="download-section download-effects-section" id="download-effects-section">
           <div class="effects-toggle-row">
-            <label class="effects-toggle-label" for="download-apply-effects">Apply current audio effects (Preset/High Quality)</label>
+            <label class="effects-toggle-label" for="download-apply-effects">Apply current audio effects (preset and effects)</label>
             <input type="checkbox" id="download-apply-effects" class="m3-switch-input">
           </div>
         </div>
@@ -4532,6 +4547,7 @@
   <script src="settings-peek.js"></script>
   <script src="rank-emblems.js"></script>
   <script src="ascension.js"></script>
+  <script src="headphones.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

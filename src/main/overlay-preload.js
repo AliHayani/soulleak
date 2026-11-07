@@ -6,5 +6,8 @@ contextBridge.exposeInMainWorld('soulOverlay', {
   hide: () => ipcRenderer.send('overlay-toggle'),
   dragStart: () => ipcRenderer.send('overlay-drag-start'),
   dragEnd: () => ipcRenderer.send('overlay-drag-end'),
-  onState: (cb) => ipcRenderer.on('overlay-state', (e, state) => cb(state))
+  onState: (cb) => ipcRenderer.on('overlay-state', (e, state) => cb(state)),
+  // extra = pixels the preset list needs (0 closes it). The reply says which way the window grew.
+  menu: (extra) => ipcRenderer.send('overlay-menu', extra),
+  onMenuPlaced: (cb) => ipcRenderer.on('overlay-menu-placed', (e, side) => cb(side))
 });

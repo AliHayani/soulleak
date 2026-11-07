@@ -230,6 +230,58 @@
     }
 
     .seek:hover .seek-time, body.seeking .seek-time { opacity: 1; }
+
+    /* Presets: the button glows while a preset other than Default is on. */
+    .presets { width: 30px; height: 30px; color: rgba(255, 255, 255, 0.55); }
+    .presets svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; }
+    body.preset-on .presets, body.menu-open .presets {
+      color: #fff;
+      background: rgba(139, 92, 246, 0.28);
+      box-shadow: inset 0 0 0 1px rgba(139, 92, 246, 0.8), 0 0 12px rgba(139, 92, 246, 0.6);
+    }
+
+    /* While the list is open the window is taller: the pill keeps its size at the corner side, the list fills
+       the rest. */
+    body.menu-open .pill { inset: auto 6px auto 6px; height: 64px; }
+    body.menu-open.menu-down .pill { top: 6px; }
+    body.menu-open.menu-up .pill { bottom: 6px; }
+    .menu {
+      position: absolute;
+      left: 6px;
+      right: 6px;
+      display: none;
+      flex-direction: column;
+      gap: 2px;
+      padding: 6px;
+      border-radius: 14px;
+      background: #0b0a10;
+      border: 1px solid rgba(139, 92, 246, 0.45);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.55);
+      overflow-y: auto;
+      color: #fff;
+    }
+    body.menu-open .menu { display: flex; }
+    body.menu-down .menu { top: 74px; bottom: 6px; }
+    body.menu-up .menu { top: 6px; bottom: 74px; }
+    .menu::-webkit-scrollbar { width: 4px; }
+    .menu::-webkit-scrollbar-thumb { background: rgba(139, 92, 246, 0.5); border-radius: 2px; }
+    .menu-head { padding: 2px 8px 4px; font-size: 10.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: rgba(255, 255, 255, 0.45); }
+    .menu button {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: 100%;
+      height: 30px;
+      padding: 0 10px;
+      border-radius: 9px;
+      font: inherit;
+      font-size: 12.5px;
+      text-align: left;
+      color: rgba(255, 255, 255, 0.85);
+    }
+    .menu button:active { transform: none; }
+    .menu button.active { color: #fff; background: rgba(139, 92, 246, 0.25); }
+    .menu button.active::after { content: '✓'; font-size: 12px; color: #a78bfa; }
   </style>
 </head>
 <body>
@@ -243,6 +295,9 @@
       <span class="title" id="title">Nothing playing</span>
       <span class="artist" id="artist">Soulleak</span>
     </div>
+    <button type="button" class="presets" id="presets-btn" title="Presets" aria-haspopup="true" aria-expanded="false">
+      <svg viewBox="0 0 24 24"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></svg>
+    </button>
     <button type="button" data-cmd="prev" title="Previous">
       <svg viewBox="0 0 24 24"><path d="M6 5h2v14H6zM20 6.2v11.6a1 1 0 0 1-1.55.83L10 13a1.2 1.2 0 0 1 0-2l8.45-5.63A1 1 0 0 1 20 6.2Z"/></svg>
     </button>
@@ -266,6 +321,7 @@
       <span class="seek-time" id="seek-time">0:00</span>
     </div>
   </div>
+  <div class="menu" id="menu" role="menu"></div>
 
   <script>
     const api = window.soulOverlay;
@@ -385,9 +441,65 @@
       if (api) api.command('seek', pos);
     });
 
+    // ---- Presets list ----
+    const presetsBtn = document.getElementById('presets-btn');
+    const menu = document.getElementById('menu');
+    let presets = [];
+    let activePreset = 'p_default';
+    const ROW = 32;
+    function renderMenu() {
+      menu.innerHTML = '<div class="menu-head">Presets</div>' + presets.map((p) =>
+        '<button type="button" role="menuitem" data-id="' + p.id.replace(/"/g, '') + '" class="' + (p.id === activePreset ? 'active' : '') + '"></button>').join('');
+      // Names go in as text, never as HTML.
+      menu.querySelectorAll('button').forEach((b, i) => { b.textContent = presets[i].name; });
+    }
+    function openMenu() {
+      if (!api || !presets.length) return;
+      renderMenu();
+      const extra = Math.min(6, presets.length) * ROW + 40;
+      document.body.classList.add('menu-open');
+      presetsBtn.setAttribute('aria-expanded', 'true');
+      api.menu(extra);
+    }
+    function closeMenu() {
+      if (!document.body.classList.contains('menu-open')) return;
+      document.body.classList.remove('menu-open', 'menu-up', 'menu-down');
+      presetsBtn.setAttribute('aria-expanded', 'false');
+      if (api) api.menu(0);
+    }
+    presetsBtn.addEventListener('click', () => {
+      if (document.body.classList.contains('menu-open')) closeMenu(); else openMenu();
+    });
+    menu.addEventListener('click', (e) => {
+      const b = e.target.closest('button[data-id]');
+      if (!b || !api) return;
+      api.command('apply-preset', b.dataset.id);
+      activePreset = b.dataset.id === activePreset && b.dataset.id !== 'p_default' ? 'p_default' : b.dataset.id;
+      closeMenu();
+    });
+    // Back to the game (or anywhere else) closes the list.
+    window.addEventListener('blur', closeMenu);
+    window.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeMenu(); });
+    grip.addEventListener('pointerdown', closeMenu, true);
+    if (api && api.onMenuPlaced) {
+      api.onMenuPlaced((side) => {
+        if (side === 'closed') { document.body.classList.remove('menu-open', 'menu-up', 'menu-down'); presetsBtn.setAttribute('aria-expanded', 'false'); return; }
+        if (!document.body.classList.contains('menu-open')) return;
+        document.body.classList.toggle('menu-up', side === 'up');
+        document.body.classList.toggle('menu-down', side !== 'up');
+      });
+    }
+
     if (api) {
       api.onState((s) => {
         if (!s) return;
+        if (Array.isArray(s.presets)) {
+          presets = s.presets;
+          activePreset = s.activePreset || 'p_default';
+          document.body.classList.toggle('preset-on', activePreset !== 'p_default');
+          presetsBtn.title = 'Presets: ' + ((presets.find((p) => p.id === activePreset) || {}).name || 'Default');
+          if (document.body.classList.contains('menu-open')) renderMenu();
+        }
         document.body.classList.toggle('playing', !!s.playing);
         document.body.classList.toggle('repeat-on', !!s.repeat);
         repeatBtn.setAttribute('aria-pressed', s.repeat ? 'true' : 'false');

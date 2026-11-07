@@ -4544,3 +4544,193 @@ body.unfocused .sl-asc *, body.unfocused .sl-asc *::before, body.unfocused .sl-a
 .sl-hero:not(:hover) .sl-hero-fx::before,
 .sl-hero:not(:hover) .sl-hero-fx::after,
 .sl-hero:not(:hover) .sl-hero-fx i { animation-play-state: paused !important; }
+
+/* ---- Headphone correction (Audio > Enhancer) ---- */
+.hp-eq-card { display: flex; flex-direction: column; gap: 10px; }
+.hp-eq-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.hp-eq-current { font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hp-eq-card.is-on .hp-eq-current { color: var(--md-sys-color-primary); font-weight: 600; }
+.hp-eq-search-wrap { position: relative; }
+.hp-eq-input {
+  width: 100%; box-sizing: border-box; height: 38px; padding: 0 14px; border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--md-sys-color-outline) 40%, transparent);
+  background: color-mix(in srgb, var(--md-sys-color-on-surface) 6%, transparent);
+  color: var(--md-sys-color-on-surface); font: inherit; font-size: calc(13px * var(--font-scale, 1)); outline: none;
+}
+.hp-eq-input:focus { border-color: var(--md-sys-color-primary); }
+.hp-eq-results {
+  margin-top: 6px; display: flex; flex-direction: column; border-radius: 12px; overflow: hidden;
+  background: var(--md-sys-color-surface-container-high, #1d1b20);
+  border: 1px solid color-mix(in srgb, var(--md-sys-color-outline) 30%, transparent);
+}
+.hp-eq-results[hidden] { display: none; }
+.hp-eq-opt {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 9px 14px;
+  background: none; border: 0; color: var(--md-sys-color-on-surface); font: inherit; text-align: left; cursor: pointer;
+  font-size: calc(13px * var(--font-scale, 1));
+}
+.hp-eq-opt:hover, .hp-eq-opt:focus-visible { background: color-mix(in srgb, var(--md-sys-color-primary) 16%, transparent); outline: none; }
+.hp-eq-opt-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hp-eq-opt-kind { flex-shrink: 0; font-size: calc(11px * var(--font-scale, 1)); color: var(--md-sys-color-outline); }
+.hp-eq-note { padding: 10px 14px; font-size: calc(12px * var(--font-scale, 1)); color: var(--md-sys-color-outline); }
+.hp-eq-credit { font-size: calc(11px * var(--font-scale, 1)); color: var(--md-sys-color-outline); opacity: 0.8; }
+
+
+/* ---- Soulleak Home layout: Up late, the cover carousel as For you, Heavy rotation, History ---- */
+body:not(.home-spotify) #view-discover.active .discover-content { display: flex; flex-direction: column; gap: 28px; height: auto !important; min-height: 100%; }
+body:not(.home-spotify) #sp-home { display: contents !important; }
+body:not(.home-spotify) #sl-hero { order: 1; margin: 18px 24px 0; }
+body:not(.home-spotify) #home-hero { order: 2; flex: 0 0 auto; height: clamp(520px, 72vh, 700px); min-height: 0; }
+body:not(.home-spotify) #sp-quick-sec { order: 3; margin-left: 24px; margin-right: 24px; }
+body:not(.home-spotify) #sp-trend-sec { order: 4; margin-left: 24px; margin-right: 24px; padding-bottom: 120px; }
+body:not(.home-spotify) #sp-made-sec,
+body:not(.home-spotify) #sp-artists-sec,
+body:not(.home-spotify) #spotify-promo { display: none !important; }
+
+/* ---- Light mode over a wallpaper: frosted white glass instead of the dark smoke ----
+   The dark smoked scrim made light mode's dark text unreadable, and the solid light panels sat on top as blocks.
+   Here the scrim is a white wash ("Wallpaper dim" washes it further) and the panels are translucent white. */
+body.theme-light #sl-wallpaper {
+  background:
+    linear-gradient(rgba(255, 255, 255, var(--sl-wall-veil, 0)), rgba(255, 255, 255, var(--sl-wall-veil, 0))),
+    linear-gradient(135deg, rgba(250, 249, 253, 0.80) 0%, rgba(244, 240, 252, 0.64) 55%, rgba(250, 249, 253, 0.74) 100%);
+}
+body.theme-light:is(.sl-glass, .cover-bg-on) #main-content#main-content {
+  background: rgb(from var(--md-sys-color-surface-container-lowest) r g b / 0.48) !important;
+}
+body.theme-light:is(.sl-glass, .cover-bg-on) #sidebar#sidebar {
+  background: rgb(from var(--md-sys-color-surface-container-low) r g b / 0.62) !important;
+  border-color: rgba(0, 0, 0, 0.06) !important;
+}
+body.theme-light:is(.sl-glass, .cover-bg-on) #playbar#playbar { background: rgb(from var(--md-sys-color-surface-container) r g b / 0.66) !important; }
+body.theme-light:is(.sl-glass, .cover-bg-on) .top-nav .search-box { background: rgb(from var(--md-sys-color-surface-container) r g b / 0.7) !important; }
+body.theme-light:is(.sl-glass, .cover-bg-on) #right-panel#right-panel { background: rgb(from var(--md-sys-color-surface-container-lowest) r g b / 0.55) !important; }
+body.theme-light:is(.sl-glass, .cover-bg-on) #sidebar#sidebar,
+body.theme-light:is(.sl-glass, .cover-bg-on) #playbar#playbar,
+body.theme-light:is(.sl-glass, .cover-bg-on) .top-nav .search-box {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+body.theme-light:is(.sl-glass, .cover-bg-on) #sidebar::before,
+body.theme-light:is(.sl-glass, .cover-bg-on) #sidebar::after,
+body.theme-light:is(.sl-glass, .cover-bg-on) #playbar::after { display: none !important; }
+body.theme-light:is(.sl-glass, .cover-bg-on) .sl-hero,
+body.theme-light:is(.sl-glass, .cover-bg-on) #sidebar .ob-level,
+body.theme-light:is(.sl-glass, .cover-bg-on) #sp-home .sp-tile {
+  background: rgb(from var(--md-sys-color-surface-container-high) r g b / 0.6) !important;
+  border: 1px solid rgb(from var(--sl-accent-deep) r g b / 0.16) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5);
+}
+body.theme-light:is(.sl-glass, .cover-bg-on) .track-row:hover,
+body.theme-light:is(.sl-glass, .cover-bg-on) .track-row.selected {
+  background: rgb(from var(--md-sys-color-surface-container-high) r g b / 0.6) !important;
+  box-shadow: inset 0 0 0 1px rgb(from var(--sl-accent-deep) r g b / 0.16);
+}
+
+/* Up late card in light mode: its text was fixed to white and its accents to a pale violet, which washed out on a
+   light card. Dark text and the deeper accent, with or without a wallpaper. */
+body.theme-light .sl-hero-title,
+body.theme-light .sl-hero-rank-name,
+body.theme-light .sl-hero-big,
+body.theme-light .sl-resume-title { color: var(--md-sys-color-on-surface) !important; }
+body.theme-light .sl-hero-rank-name em,
+body.theme-light .sl-resume-kind { color: var(--sl-accent-deep) !important; }
+body.theme-light .sl-hero-rank:hover .sl-hero-rank-name,
+body.theme-light .sl-hero-month:hover .sl-hero-big { color: var(--sl-accent-deep) !important; }
+body.theme-light .sl-hero-bar { background: rgba(0, 0, 0, 0.08); }
+body.theme-light .sl-hero {
+  background: linear-gradient(120deg, rgb(from var(--sl-accent) r g b / 0.12), transparent 55%), rgb(from var(--md-sys-color-surface-container-high) r g b / 0.6);
+}
+body.theme-light .sl-resume:hover { background: rgba(0, 0, 0, 0.04); }
+
+/* ---- Hide top titlebar (Advanced): in Soulleak's one-row header the titlebar sits under the search row, so
+   collapsing it alone changed nothing. With the setting on, the whole header (search, source switch, Settings,
+   window buttons) leaves, the page takes its space, and touching the top edge slides the header back in over it. */
+body.theme-dark.hide-titlebar:not(.classic-sidebar):not(.mini) .titlebar,
+body.theme-dark.hide-titlebar:not(.classic-sidebar):not(.mini) .top-nav {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  height: var(--sl-head-h) !important;
+  min-height: var(--sl-head-h) !important;
+  margin-top: 0 !important;
+  opacity: 0 !important;
+  transform: translateY(-100%);
+  pointer-events: none !important;
+  transition: transform 0.22s cubic-bezier(0.2, 0, 0, 1), opacity 0.18s ease;
+}
+body.theme-dark.hide-titlebar:not(.classic-sidebar):not(.mini) .titlebar { z-index: 10001 !important; overflow: visible !important; }
+body.theme-dark.hide-titlebar:not(.classic-sidebar):not(.mini) .top-nav { z-index: 10002 !important; }
+body.theme-dark.hide-titlebar.titlebar-reveal:not(.classic-sidebar):not(.mini) .titlebar,
+body.theme-dark.hide-titlebar.titlebar-reveal:not(.classic-sidebar):not(.mini) .top-nav {
+  opacity: 1 !important;
+  transform: none;
+}
+body.theme-dark.hide-titlebar.titlebar-reveal:not(.classic-sidebar):not(.mini) .titlebar {
+  pointer-events: auto !important;
+  background: rgb(from var(--md-sys-color-surface-container-lowest) r g b / 0.94) !important;
+  border-bottom: 1px solid var(--sl-edge, rgba(255, 255, 255, 0.08)) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+body.theme-dark.hide-titlebar:not(.classic-sidebar):not(.mini) .app-layout {
+  margin-top: var(--sl-gap) !important;
+  height: calc(100vh - var(--sl-gap) - var(--sl-dock-space)) !important;
+  max-height: calc(100vh - var(--sl-gap) - var(--sl-dock-space)) !important;
+}
+body.perf.hide-titlebar .titlebar, body.perf.hide-titlebar .top-nav { transition: none !important; }
+
+/* ---- Position of searchbar (Interface): Soulleak's header grid always put the search in the middle column.
+   Left: it starts at the left of the header, which begins where the sidebar ends. Right: it sits just before the
+   source switch and Settings. Middle is the grid above, unchanged. */
+body.theme-dark:not(.classic-sidebar):not(.mini) .top-nav.search-pos-left {
+  grid-template-columns: minmax(220px, 480px) minmax(0, 1fr) minmax(max-content, auto);
+}
+html body.theme-dark .top-nav.search-pos-left .search-box-wrapper.search-box-wrapper { grid-column: 1; }
+body.theme-dark:not(.classic-sidebar):not(.mini) .top-nav.search-pos-right {
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 480px) max-content;
+}
+html body.theme-dark .top-nav.search-pos-right .search-box-wrapper.search-box-wrapper { grid-column: 2; }
+
+
+/* ---- Retired Interface settings: they control parts of Riff that Soulleak replaced (the old karaoke screen,
+   panel corners/opacity/blur the Soulleak theme sets itself, the dock's always-shown times, the wave beside the
+   cover). Hidden rather than deleted, so the code wired to them is untouched. */
+#view-settings .setting-item:has(#btn-autohide-timestamps),
+#view-settings .setting-item:has(#slider-corner-radius),
+#view-settings .setting-item:has(#slider-ui-alpha),
+#view-settings .setting-item:has(#slider-panel-blur),
+#view-settings .setting-item:has(#btn-tvk-visualizer-setting),
+#view-settings .setting-item:has(#btn-tvk-visualizer-lyrics-setting),
+#view-settings .setting-item:has(#slider-tvk-vis-opacity-setting),
+#view-settings .setting-item:has(#slider-tvk-bg-blur-setting),
+#view-settings .setting-item:has(#slider-viz-smooth),
+#view-settings .setting-item:has(#slider-viz-sens),
+#view-settings .setting-item:has(#bar-viz-pos-group) { display: none !important; }
+
+
+/* ---- Presets menu: groups, Soulleak originals, the Door slider; the dock button glows while a preset is on ---- */
+.sl-presets-menu { min-width: 230px; }
+.sl-presets-menu .sl-preset-group {
+  margin: 8px 10px 3px; font-size: 10.5px; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase;
+  color: var(--md-sys-color-outline);
+}
+.sl-presets-menu .sl-preset-group-sl { color: #a78bfa; }
+.sl-presets-menu .sl-preset-group-sl::before { content: '\2726'; margin-right: 6px; }
+.sl-door-row {
+  display: flex; align-items: center; gap: 10px; margin: 2px 10px 6px 18px; padding: 6px 10px; border-radius: 10px;
+  background: rgba(124, 58, 237, 0.14); font-size: 12px; color: var(--md-sys-color-on-surface);
+}
+.sl-door-row[hidden] { display: none; }
+.sl-door-row input { flex: 1; min-width: 0; accent-color: #7c3aed; }
+.sl-door-row em { font-style: normal; font-variant-numeric: tabular-nums; min-width: 34px; text-align: right; color: var(--md-sys-color-on-surface-variant); }
+body.sl-preset-on #playbar #btn-ob-presets {
+  color: #fff !important;
+  background: rgba(124, 58, 237, 0.28) !important;
+  box-shadow: 0 0 0 1px rgba(124, 58, 237, 0.75), 0 0 14px rgba(124, 58, 237, 0.65) !important;
+}
+
+/* High Quality (beta) retired: its "engines" only nudged three ±4 dB filters and added distortion. Headphone
+   correction does the real job. Always off (app.js), card hidden. */
+.hq-enhancer-card { display: none !important; }

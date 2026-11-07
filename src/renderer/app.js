@@ -648,11 +648,19 @@ document.addEventListener('DOMContentLoaded', async () => {
     }, 200);
   }
 
+  // Soulleak originals: each runs its own chain in the audio engine (audio.js _buildSignature).
+  const SIGNATURE_PRESETS = [
+    { id: 'p_bathroom', name: '3AM Bathroom', signature: 'bathroom' },
+    { id: 'p_ethereal', name: 'Ethereal Drift', signature: 'ethereal' },
+    { id: 'p_soulbleed', name: 'Soulbleed', signature: 'soulbleed' },
+    { id: 'p_vhs', name: 'VHS Melt', signature: 'vhs' }
+  ];
   const defaultPresets = [
     { id: 'p_default', name: 'Default', settings: { speed: 1.0, speedPitch: 1.0, pitch: 0, reverb: 0, distortion: 0, volume: 1.0, echo: 0, eq: { low: 0, mid: 0, high: 0 }, eqBands: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0] } },
     { id: 'p_slowed', name: 'Slowed + reverb', settings: { speed: 1.0, speedPitch: 0.82, pitch: 0, reverb: 65, distortion: 0, volume: 1.0, echo: 15, eq: { low: 0, mid: 0, high: 0 }, eqBands: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0] } },
     { id: 'p_nightcore', name: 'Nightcore', settings: { speed: 1.0, speedPitch: 1.25, pitch: 0, reverb: 20, distortion: 0, volume: 1.0, echo: 0, eq: { low: 0, mid: 0, high: 0 }, eqBands: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0] } },
     { id: 'p_8d', name: '8D Audio', settings: { speed: 1.0, speedPitch: 1.0, pitch: 0, reverb: 12, distortion: 0, volume: 1.0, echo: 0, spatial8d: 1, eq: { low: 0, mid: 0, high: 0 }, eqBands: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0] } },
+    ...SIGNATURE_PRESETS.map((p) => ({ id: p.id, name: p.name, settings: { speed: 1.0, speedPitch: 1.0, pitch: 0, reverb: 0, distortion: 0, volume: 1.0, echo: 0, eq: { low: 0, mid: 0, high: 0 }, eqBands: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0], signature: p.signature } })),
     { id: 'p_distortion', name: 'Distortion', settings: { speed: 1.0, speedPitch: 1.0, pitch: 0, reverb: 0, distortion: 75, volume: 1.25, echo: 0, eq: { low: 0, mid: 0, high: 0 }, eqBands: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0] } }
   ];
 
@@ -686,6 +694,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                           volume: typeof s.volume === 'number' ? s.volume : (typeof s.gain === 'number' ? s.gain : 1.0),
                           echo: typeof s.echo === 'number' ? s.echo : 0,
                           spatial8d: typeof s.spatial8d === 'number' ? s.spatial8d : 0,
+                          signature: typeof s.signature === 'string' ? s.signature : '',
                           eq: {
                             low: typeof eq.low === 'number' ? eq.low : 0,
                             mid: typeof eq.mid === 'number' ? eq.mid : 0,
@@ -739,7 +748,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         eq: { ...DEFAULT_AUDIO_SETTINGS.eq, ...(audioObj.eq && typeof audioObj.eq === 'object' ? audioObj.eq : {}) },
         eqBands: Array.isArray(audioObj.eqBands) && audioObj.eqBands.length === 10 ? audioObj.eqBands.map(v => typeof v === 'number' ? v : 0) : [...DEFAULT_AUDIO_SETTINGS.eqBands]
       },
-      hqEnabled: localStorage.getItem('riff_hq_enabled') === '1',
+      // High Quality (beta) was retired: its fake engines barely changed the sound. Always off.
+      hqEnabled: false,
       hqSettings: { ...DEFAULT_HQ_SETTINGS, ...hqObj }
     };
   }
@@ -2426,7 +2436,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     clearTitlebarRevealHideTimer();
     titlebarRevealHideTimer = setTimeout(() => {
       titlebarRevealHideTimer = null;
-      if (pointerY > 48) document.body.classList.remove('titlebar-reveal');
+      if (pointerY > 64) document.body.classList.remove('titlebar-reveal');
     }, 800);
   };
   window.addEventListener('pointermove', (event) => {
@@ -2440,7 +2450,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       clearTitlebarRevealHideTimer();
       document.body.classList.add('titlebar-reveal');
     } else if (document.body.classList.contains('titlebar-reveal')) {
-      if (pointerY <= 48) clearTitlebarRevealHideTimer();
+      if (pointerY <= 64) clearTitlebarRevealHideTimer();
       else if (!titlebarRevealHideTimer) scheduleTitlebarRevealHide();
     }
   });
@@ -8317,7 +8327,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     const last = Array.isArray(state.history) ? state.history.find((t) => t && (t.id || t.url || t.title)) : null;
     if (last) {
       const track = Object.assign({}, last);
+      // A My Wave radio queue that starts with that song: Skip (shuffle or not) carries on into My Wave instead of
+      // replaying the only song in the queue.
+      state.isRadioQueue = true;
       playTrack(track, [track], 0);
+      ensureInfiniteWaveQueue(true).catch(() => {});
       return true;
     }
     if (!Array.isArray(state.vibeTracks) || state.vibeTracks.length === 0) {
@@ -9339,7 +9353,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     const fromAudio = JSON.parse(JSON.stringify(state.audioSettings));
     const toAudio = JSON.parse(JSON.stringify(normalized.settings));
-    tweenSettings(fromAudio, toAudio, 400, (cur) => {
+    tweenSettings(fromAudio, toAudio, 350, (cur) => {
       state.audioSettings = { ...state.audioSettings, ...cur };
       syncSettingsSlidersToState();
       applyAudioSettings();
@@ -14158,12 +14172,16 @@ function renderClickableArtists(container, rawArtist, hintTrack = null) {
       }
       if (typeof renderSpotifyHome === 'function') renderSpotifyHome();
     } else {
-      if (spHome) spHome.style.display = 'none';
+      if (spHome) {
+        spHome.classList.remove('hidden');
+        spHome.style.display = '';
+      }
       if (homeHero) {
         homeHero.classList.remove('hidden');
         homeHero.style.display = '';
       }
       if (typeof initHomeHero === 'function') initHomeHero();
+      if (typeof renderSpotifyHome === 'function') renderSpotifyHome();
     }
     if (typeof syncHomeAmbientVisibility === 'function') syncHomeAmbientVisibility();
   }
@@ -14251,8 +14269,7 @@ function renderClickableArtists(container, rawArtist, hintTrack = null) {
             if (el.viewDiscover) el.viewDiscover.classList.add('active');
             restoreDiscoverHomeState(false);
             if (el.navDiscover) el.navDiscover.classList.add('active');
-            const sp = (localStorage.getItem('riff_home_layout') || 'spotify') === 'spotify';
-            if (sp) renderSpotifyHome();
+            renderSpotifyHome();
           } else if (viewName === 'soul') {
             if (el.viewSoul) el.viewSoul.classList.add('active');
             if (el.navSoul) el.navSoul.classList.add('active');
@@ -16154,6 +16171,17 @@ function bindCoverHoldZoom(wrapEl) {
     }
   };
 
+  const SL_ICON_ALIASES = {
+    '#sl-head-settings svg': '#nav-settings svg',
+    '#btn-toggle-queue-panel svg': '#nav-queue svg',
+    '#fav-icon': '#nav-favorites svg',
+    '#nav-discover .ob-home-icon svg': 'house'
+  };
+  const SL_HOUSE_ICONS = {
+    sf: '<path d="M3.5 10.2 12 3.5l8.5 6.7V19a1.5 1.5 0 0 1-1.5 1.5h-4.2v-5.8H9.2v5.8H5A1.5 1.5 0 0 1 3.5 19z"></path>',
+    lucide: '<path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"></path><path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>',
+    solar: '<path d="M2 12.2c0-2.29 0-3.43.52-4.38.52-.95 1.47-1.54 3.37-2.71l2-1.24C9.9 2.62 10.9 2 12 2s2.1.62 4.11 1.87l2 1.24c1.9 1.17 2.85 1.76 3.37 2.71.52.95.52 2.1.52 4.38v1.52c0 3.9 0 5.86-1.17 7.07C19.66 22 17.78 22 14 22h-4c-3.77 0-5.66 0-6.83-1.21C2 19.58 2 17.62 2 13.72z"></path><path d="M15 18H9"></path>'
+  };
   function applyIconPack(pack) {
     if (!['material', 'sf', 'lucide', 'solar'].includes(pack)) pack = 'material';
     document.body.setAttribute('data-icon-pack', pack);
@@ -16178,6 +16206,16 @@ function bindCoverHoldZoom(wrapEl) {
           elSvg.innerHTML = packDef[sel];
         }
       }
+    });
+    // Soulleak's own icons: each borrows the pack's matching drawing. The heart keeps its liked/unliked look,
+    // which is the fill attribute on the <svg> itself.
+    Object.entries(SL_ICON_ALIASES).forEach(([sel, src]) => {
+      const elSvg = document.querySelector(sel);
+      if (!elSvg) return;
+      if (!elSvg.dataset.origSvg) elSvg.dataset.origSvg = elSvg.innerHTML;
+      if (pack === 'material') { elSvg.innerHTML = elSvg.dataset.origSvg; return; }
+      const drawing = src === 'house' ? SL_HOUSE_ICONS[pack] : (ICON_PACKS[pack] || {})[src];
+      if (drawing) elSvg.innerHTML = src === '#nav-favorites svg' ? drawing.replace(/\sfill="[^"]*"/g, '') : drawing;
     });
 
     const packLabels = {
@@ -17250,7 +17288,12 @@ function bindCoverHoldZoom(wrapEl) {
   function renderHomeButtonIcon(shown) {
     const slot = document.querySelector('#nav-discover .ob-home-icon');
     if (!slot) return;
-    if (shown === HOME_HOUSE) { slot.innerHTML = homeHouseSvg(20); return; }
+    if (shown === HOME_HOUSE) {
+      slot.innerHTML = homeHouseSvg(20);
+      const pack = document.body.getAttribute('data-icon-pack');
+      if (pack && pack !== 'material') applyIconPack(pack);
+      return;
+    }
     const img = document.createElement('img');
     img.className = 'ob-home-app-icon';
     img.alt = '';
@@ -17695,6 +17738,8 @@ function bindCoverHoldZoom(wrapEl) {
   }
 
   const barVizPosGroup = document.getElementById('bar-viz-pos-group');
+  // "Compact" (the wave beside the cover) can't show in Soulleak's dock, so a saved Compact becomes Behind bar.
+  if (localStorage.getItem('riff_bar_viz_pos') === 'mini') localStorage.setItem('riff_bar_viz_pos', 'behind');
   const initialBarVizPos = localStorage.getItem('riff_bar_viz_pos') || 'behind';
   function applyBarVizPos(pos) {
     document.body.classList.toggle('bar-viz-behind', pos === 'behind');
@@ -17718,7 +17763,8 @@ function bindCoverHoldZoom(wrapEl) {
 
   const sliderBarVizOpacity = document.getElementById('slider-bar-viz-opacity');
   const valBarVizOpacity = document.getElementById('val-bar-viz-opacity');
-  const initialBarVizOpacity = localStorage.getItem('riff_bar_viz_opacity') || '22';
+  // 22% was barely visible behind Soulleak's dock.
+  const initialBarVizOpacity = localStorage.getItem('riff_bar_viz_opacity') || '45';
   function applyBarVizOpacity(v) {
     const num = parseInt(v, 10);
     document.documentElement.style.setProperty('--bar-viz-opacity', (num / 100).toString());
@@ -18863,6 +18909,16 @@ function bindCoverHoldZoom(wrapEl) {
       else if (action === 'volume-down') adjustVolume(-0.05);
       else if (action === 'set-volume' && Number.isFinite(Number(value))) adjustVolume(Number(value) - state.volume);
       else if (action === 'toggle-repeat') window.toggleRepeat();
+      else if (action === 'apply-preset' && value) {
+        // Same as the dock's preset menu: picking the active preset again goes back to Default.
+        let id = String(value);
+        if (id === state.activePresetId && id !== 'p_default') id = 'p_default';
+        const preset = getAllPresets().find((p) => p.id === id);
+        if (preset) {
+          applyPreset(preset);
+          if (typeof updateFxTags === 'function') updateFxTags();
+        }
+      }
       else if (action === 'seek' && Number.isFinite(Number(value)) && el.nativeAudio) {
         const d = el.nativeAudio.duration;
         el.nativeAudio.currentTime = Math.max(0, Math.min(Number.isFinite(d) ? d - 0.5 : Number(value), Number(value)));
@@ -18885,7 +18941,9 @@ function bindCoverHoldZoom(wrapEl) {
         repeat: !!state.isRepeat,
         volume: state.isMuted ? 0 : state.volume,
         position: audio && Number.isFinite(audio.currentTime) ? Math.round(audio.currentTime * 4) / 4 : 0,
-        duration: audio && Number.isFinite(audio.duration) ? Math.round(audio.duration) : 0
+        duration: audio && Number.isFinite(audio.duration) ? Math.round(audio.duration) : 0,
+        presets: getAllPresets().map((p) => ({ id: p.id, name: p.name || 'Preset' })),
+        activePreset: state.activePresetId || 'p_default'
       };
       const key = JSON.stringify(snapshot);
       if (key === lastOverlayState) return;
@@ -19913,6 +19971,10 @@ function bindCoverHoldZoom(wrapEl) {
     if ((s.distortion || 0) > 0) tags.push('Drive');
     if ((s.spatial8d || 0) > 0) tags.push('8D');
     if ((s.eqBands || []).some((v) => v)) tags.push('EQ');
+    if (s.signature) {
+      const sig = SIGNATURE_PRESETS.find((p) => p.signature === s.signature);
+      if (sig) tags.unshift(sig.name);
+    }
     return tags;
   }
 
@@ -19934,6 +19996,7 @@ function bindCoverHoldZoom(wrapEl) {
     if (box.innerHTML === html) return;
     box.innerHTML = html;
     document.body.classList.toggle('ob-has-fx', tags.length > 0);
+    document.body.classList.toggle('sl-preset-on', !!state.activePresetId && state.activePresetId !== 'p_default');
     // Effects changed mid-song: refresh Discord once the change settles (presets tween for a moment).
     clearTimeout(updateFxTags.rpcTimer);
     updateFxTags.rpcTimer = setTimeout(() => {
@@ -20048,6 +20111,25 @@ function bindCoverHoldZoom(wrapEl) {
   window.addEventListener('resize', closeDockMenu);
   window.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeDockMenu(); });
 
+  // 3AM Bathroom's door (0 = shut, 1 = open), remembered between songs and sessions.
+  function getDoor() {
+    const v = Number(localStorage.getItem('sl_bathroom_door'));
+    return Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : 0;
+  }
+  function setDoor(v) {
+    localStorage.setItem('sl_bathroom_door', String(v));
+    if (audioEngine && audioEngine.setDoor) audioEngine.setDoor(v);
+  }
+  if (audioEngine && audioEngine.setDoor) audioEngine.setDoor(getDoor());
+  // The Door slider shows only while 3AM Bathroom is on; the menu stays anchored above the dock button.
+  function syncDoorRow(menu) {
+    const row = menu && menu.querySelector('.sl-door-row');
+    if (!row) return;
+    row.hidden = state.activePresetId !== 'p_bathroom';
+    const r = dockPresetsBtn.getBoundingClientRect();
+    menu.style.top = `${Math.max(8, r.top - menu.offsetHeight - 12)}px`;
+  }
+
   // Presets: the same four as the song-row menu plus your own; picking the active one again goes back to Original.
   function dockPresetItems() {
     const own = (state.customPresets || []).map((p) => ({ id: p.id, label: p.name || 'Custom preset' }));
@@ -20057,9 +20139,18 @@ function bindCoverHoldZoom(wrapEl) {
   if (dockPresetsBtn) {
     dockPresetsBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      const html = `<div class="sl-dock-menu-head">Presets</div>` + dockPresetItems().map((p) =>
-        `<button type="button" role="menuitemradio" data-preset="${escapeHtml(p.id)}" class="${state.activePresetId === p.id ? 'is-active' : ''}">${escapeHtml(p.label)}</button>`
-      ).join('');
+      const item = (id, label, extra) => `<button type="button" role="menuitemradio" data-preset="${escapeHtml(id)}" class="${state.activePresetId === id ? 'is-active' : ''}">${extra || ''}<span>${escapeHtml(label)}</span></button>`;
+      const door = Math.round(getDoor() * 100);
+      const own = (state.customPresets || []);
+      const html = `<div class="sl-dock-menu-head">Presets</div>`
+        + item('p_default', 'Original')
+        + `<div class="sl-preset-group">Classic</div>`
+        + ROW_FX_PRESETS.filter((p) => p.id !== 'p_default').map((p) => item(p.id, p.label)).join('')
+        + `<div class="sl-preset-group sl-preset-group-sl">Soulleak originals</div>`
+        + SIGNATURE_PRESETS.map((p) => item(p.id, p.name) + (p.signature === 'bathroom'
+          ? `<label class="sl-door-row"><span>Door</span><input type="range" min="0" max="100" step="1" value="${door}" aria-label="Open the door"><em>${door}%</em></label>`
+          : '')).join('')
+        + (own.length ? `<div class="sl-preset-group">Yours</div>` + own.map((p) => item(p.id, p.name || 'Custom preset')).join('') : '');
       openDockMenu(dockPresetsBtn, 'sl-presets-menu', html, (ev, menu) => {
         const b = ev.target.closest('button[data-preset]');
         if (!b) return;
@@ -20070,7 +20161,21 @@ function bindCoverHoldZoom(wrapEl) {
         applyPreset(preset);
         updateFxTags();
         menu.querySelectorAll('button[data-preset]').forEach((x) => x.classList.toggle('is-active', x.dataset.preset === state.activePresetId));
+        syncDoorRow(menu);
       });
+      const menu = document.querySelector('.sl-presets-menu');
+      if (menu) {
+        const range = menu.querySelector('.sl-door-row input');
+        if (range) {
+          range.addEventListener('input', () => {
+            setDoor(Number(range.value) / 100);
+            const out = menu.querySelector('.sl-door-row em');
+            if (out) out.textContent = range.value + '%';
+          });
+          range.addEventListener('click', (e) => e.stopPropagation());
+        }
+        syncDoorRow(menu);
+      }
     });
   }
 
@@ -27421,6 +27526,7 @@ function bindCoverHoldZoom(wrapEl) {
   if (viewDiscoverEl) {
     viewDiscoverEl.addEventListener('wheel', (e) => {
       if (document.body.classList.contains('home-spotify')) return;
+      if (!e.target.closest('#home-hero')) return;
       if (!isDiscoverActive() || isFormInputFocused()) return;
       if (el.searchResultsContainer && !el.searchResultsContainer.classList.contains('hidden')) return;
       if (e.target.closest('#search-results-container')) return;
@@ -28510,14 +28616,19 @@ function bindCoverHoldZoom(wrapEl) {
       }
       renderSpotifyHome();
     } else {
+      // Soulleak layout: the cover carousel plus the Up late card, Heavy rotation and History (see soulleak.css).
       const spHome = document.getElementById('sp-home');
       const homeHero = document.getElementById('home-hero');
-      if (spHome) spHome.style.display = 'none';
+      if (spHome) {
+        spHome.classList.remove('hidden');
+        spHome.style.display = '';
+      }
       if (homeHero) {
         homeHero.classList.remove('hidden');
         homeHero.style.display = '';
       }
       initHomeHero();
+      renderSpotifyHome();
       if (!myWaveCurrentTracks || myWaveCurrentTracks.length === 0) {
         loadHomePage();
       }
@@ -29715,8 +29826,8 @@ function bindCoverHoldZoom(wrapEl) {
 
   const HOME_SECTION_DEFS = {
     'sp-made-sec': { name: 'For you', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 10v2M8 6v10M12 2v18M16 6v10M20 10v2"/></svg>' },
-    'sp-quick-sec': { name: 'Home / Quick picks', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>' },
-    'sp-trend-sec': { name: 'Trending now', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2c1 4 5 5.5 5 10a5 5 0 0 1-10 0c0-2 1-3 2-4 0 2 1 3 2 3 0-3-1-6 1-9z"/></svg>' },
+    'sp-quick-sec': { name: 'Heavy rotation', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></svg>' },
+    'sp-trend-sec': { name: 'History', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2c1 4 5 5.5 5 10a5 5 0 0 1-10 0c0-2 1-3 2-4 0 2 1 3 2 3 0-3-1-6 1-9z"/></svg>' },
     'sp-artists-sec': { name: 'Favorite artists', icon: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>' }
   };
 
@@ -29849,9 +29960,10 @@ function bindCoverHoldZoom(wrapEl) {
 
     let renderSidebar, renderHome;
     if (sidebarContainer) {
+      // Only the items Soulleak's sidebar shows; the others are hidden and keep their place.
       renderSidebar = makeCustomizerList(
         sidebarContainer,
-        getSidebarOrder,
+        () => getSidebarOrder().filter((id) => ['discover', 'soul', 'playback'].includes(id)),
         'riff_sidebar_order',
         SIDEBAR_ITEM_DEFS,
         applySidebarOrder
