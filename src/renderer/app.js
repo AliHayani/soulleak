@@ -8312,6 +8312,14 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   async function startWaveIfIdle() {
     if (state.currentTrack) return false;
+    // Nothing loaded (the app was just opened): pick up the last song played, like Home's "Resume last session".
+    // The My Wave mix is only for when there is no history yet.
+    const last = Array.isArray(state.history) ? state.history.find((t) => t && (t.id || t.url || t.title)) : null;
+    if (last) {
+      const track = Object.assign({}, last);
+      playTrack(track, [track], 0);
+      return true;
+    }
     if (!Array.isArray(state.vibeTracks) || state.vibeTracks.length === 0) {
       if (typeof fetchPersonalVibe === 'function') {
         await fetchPersonalVibe();
