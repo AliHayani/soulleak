@@ -4420,8 +4420,81 @@ document.addEventListener('DOMContentLoaded', async () => {
     fetch(streamUrl, { headers: { 'Range': 'bytes=0-262143' } }).catch(() => {});
   }
 
+  // ---- Instant playback: look songs up before they are clicked ----
+  // The lookup (/api/stream-info) is where a click spends its time. Asking for it early fills the server's link
+  // cache (and puts the link on the song), so the click itself finds it ready. Links are trusted for 45 min.
+  const PRE_RESOLVE_TTL = 45 * 60 * 1000;
+  const preResolveCache = new Map(); // key -> { at, promise }
+  let preResolveHoverInflight = 0; // hover lookups only; the queue's own lookups never block them
+  function streamInfoUrlFor(track) {
+    const qQuality = encodeURIComponent(localStorage.getItem('riff_audio_quality') || 'medium');
+    const qSearch = encodeURIComponent(track.searchQuery || ((track.artist ? track.artist + ' - ' : '') + track.title));
+    const platform = (state.platform === 'soundcloud' && (!track.url || !track.url.includes('youtube.com'))) ? 'soundcloud' : (track.platform || state.platform || 'ytmusic');
+    return `http://127.0.0.1:${state.serverPort}/api/stream-info?url=${encodeURIComponent(track.url || '')}&id=${encodeURIComponent(track.id || '')}&platform=${platform}&title=${encodeURIComponent(track.title || '')}&artist=${encodeURIComponent(track.artist || '')}&duration=${encodeURIComponent(track.duration || 0)}&thumbnail=${encodeURIComponent(track.thumbnail || '')}&quality=${qQuality}&q=${qSearch}`;
+  }
+  function preResolveTrack(track, why) {
+    if (!track || track.isCached || track.platform === 'local' || !state.serverPort) return null;
+    if (!track.id && !track.url && !track.title) return null;
+    const quality = localStorage.getItem('riff_audio_quality') || 'medium';
+    const key = (String(track.id || track.url || ((track.artist || '') + '_' + (track.title || ''))) + '_' + quality).toLowerCase();
+    const hit = preResolveCache.get(key);
+    if (hit && Date.now() - hit.at < PRE_RESOLVE_TTL) {
+      // Already looked up: put the link back on this song object if it lost it (another copy of the song, or the
+      // player dropped it).
+      if (hit.url && !track._preloadedStreamUrl && !isStreamUrlExpired(hit.url)) {
+        track._preloadedStreamUrl = hit.url;
+        track._preloadedStreamQuality = quality;
+      }
+      return hit.promise;
+    }
+    // Hovering never queues up more than two lookups at once.
+    if (why === 'hover' && preResolveHoverInflight >= 2) return null;
+    const isHover = why === 'hover';
+    if (isHover) preResolveHoverInflight++;
+    const promise = fetch(streamInfoUrlFor(track))
+      .then((r) => r.json())
+      .then((data) => {
+        if (data && data.success && data.streamUrl && !isStreamUrlExpired(data.streamUrl)) {
+          track._preloadedStreamUrl = data.streamUrl;
+          track._preloadedStreamQuality = quality;
+          const entry = preResolveCache.get(key);
+          if (entry) entry.url = data.streamUrl;
+          return data.streamUrl;
+        }
+        preResolveCache.delete(key);
+        return null;
+      })
+      .catch(() => { preResolveCache.delete(key); return null; })
+      .finally(() => { if (isHover) preResolveHoverInflight--; });
+    preResolveCache.set(key, { at: Date.now(), promise });
+    return promise;
+  }
+  // Hover a song row or card for 120 ms and its lookup starts.
+  (function setUpHoverPreResolve() {
+    let timer = null;
+    let target = null;
+    const songEl = (node) => {
+      let n = node && node.closest ? node.closest('.track-row, .my-wave-track-card, .sp-tile, .sp-card') : null;
+      return n && n._trackData ? n : null;
+    };
+    document.addEventListener('pointerover', (e) => {
+      const n = songEl(e.target);
+      if (n === target) return;
+      clearTimeout(timer);
+      target = n;
+      if (!n) return;
+      timer = setTimeout(() => { if (target === n) preResolveTrack(n._trackData, 'hover'); }, 120);
+    }, { passive: true });
+    document.addEventListener('pointerout', (e) => {
+      if (target && !target.contains(e.relatedTarget)) { clearTimeout(timer); target = null; }
+    }, { passive: true });
+  })();
+
   async function preloadNextTrackStream() {
     if (!state.queue || state.queueIndex < 0) return;
+    // The song after next is looked up too, so two skips in a row are both instant.
+    const afterNext = state.queue[state.queueIndex + 2];
+    if (afterNext) setTimeout(() => preResolveTrack(afterNext, 'queue'), 1500);
     const nextTrack = state.queue[state.queueIndex + 1];
     if (!nextTrack || nextTrack.isCached || nextTrack.platform === 'local') return;
     const curQuality = localStorage.getItem('riff_audio_quality') || 'medium';
@@ -4552,6 +4625,25 @@ document.addEventListener('DOMContentLoaded', async () => {
     return true;
   }
 
+  let playClickPerf = null;
+  function perfSrcSet(perf, pathName) {
+    if (!perf) return;
+    perf.src = performance.now();
+    perf.path = pathName;
+    if (perf.cache === null) perf.cache = perf.src - perf.t0;
+    const a = el.nativeAudio;
+    const done = () => {
+      a.removeEventListener('canplay', done);
+      document.body.classList.remove('sl-track-loading');
+      if (playClickPerf !== perf) return;
+      const now = performance.now();
+      const f = (v) => Math.round(v) + 'ms';
+      console.log(`[Perf] CacheCheck: ${f(perf.cache)} | ResolveURL: ${f(perf.resolve)} | FirstAudioByte (canplay): ${f(now - perf.src)} | Total: ${f(now - perf.t0)} (${perf.path})`);
+      window.__slLastPerf = { cache: perf.cache, resolve: perf.resolve, canplay: now - perf.src, total: now - perf.t0, path: perf.path };
+    };
+    a.addEventListener('canplay', done);
+  }
+
   async function playTrack(track, queueList = null, startIndex = -1, context = null) {
     if (track && !track._errorRetryStage) track._errorRetryStage = 0;
     if (track && track._preloadedStreamUrl && isStreamUrlExpired(track._preloadedStreamUrl)) {
@@ -4565,6 +4657,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     preloadedTrack10sFired = false;
     lastDisplayedSec = -1;
+    // [Perf] timer for this click: cache check, link lookup, first audio (canplay), total.
+    const perf = { t0: performance.now(), cache: null, resolve: 0, src: null, path: '' };
+    playClickPerf = perf;
+    document.body.classList.add('sl-track-loading');
     if (typeof lastTimeupdateSec !== 'undefined') lastTimeupdateSec = -1;
     if (syncState && syncState.active) {
       const overlay = document.getElementById('sync-mode-overlay');
@@ -4725,6 +4821,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const clean = cleanTrackId(track.id);
         const localStreamUrl = `http://127.0.0.1:${state.serverPort}/api/local-track?id=${encodeURIComponent(clean)}`;
         if (currentToken !== state.loadToken) return;
+        perfSrcSet(perf, 'offline cache');
         el.nativeAudio.src = localStreamUrl;
         playSmooth();
         applyAudioSettings();
@@ -4734,6 +4831,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (track.platform === 'local') {
         const streamUrl = track.url || (track.path ? (track.path.startsWith('file:') ? track.path : 'file://' + encodeURI(track.path)) : `http://127.0.0.1:${state.serverPort}/api/library-file?id=${encodeURIComponent(track.id)}`);
         if (currentToken !== state.loadToken) return;
+        perfSrcSet(perf, 'local file');
         el.nativeAudio.src = streamUrl;
         playSmooth();
         applyAudioSettings();
@@ -4764,6 +4862,7 @@ document.addEventListener('DOMContentLoaded', async () => {
               } else if (errData.type === Hls.ErrorTypes.MEDIA_ERROR) hlsInstance.recoverMediaError();
             }
           });
+          perfSrcSet(perf, 'pre-resolved link (HLS)');
           hlsInstance.loadSource(track._preloadedStreamUrl);
           hlsInstance.attachMedia(el.nativeAudio);
           hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => {
@@ -4773,6 +4872,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           });
         } else {
           if (preloadAudioEl && track._preloadedStreamUrl && preloadAudioEl.src !== track._preloadedStreamUrl) { try { preloadAudioEl.removeAttribute('src'); preloadAudioEl.load(); } catch (_) {} }
+          perfSrcSet(perf, 'pre-resolved link');
           el.nativeAudio.src = track._preloadedStreamUrl;
           playSmooth();
         }
@@ -4792,6 +4892,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       let data;
       // The stuck prompt waits longer while the song is still being found (see the stall detector).
       state.streamLookupPending = currentToken;
+      perf.cache = performance.now() - perf.t0;
+      const resolveStart = performance.now();
       try {
         try {
           res = await fetch(streamInfoUrl, { signal });
@@ -4804,6 +4906,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           }
         }
         data = await res.json();
+        perf.resolve = performance.now() - resolveStart;
       } finally {
         if (state.streamLookupPending === currentToken) state.streamLookupPending = null;
       }
@@ -4857,6 +4960,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             } else if (errData.type === Hls.ErrorTypes.MEDIA_ERROR) hlsInstance.recoverMediaError();
           }
         });
+        perfSrcSet(perf, 'lookup (HLS)');
         hlsInstance.loadSource(data.streamUrl);
         hlsInstance.attachMedia(el.nativeAudio);
         hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => {
@@ -4866,6 +4970,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
       } else {
         if (preloadAudioEl && track._preloadedStreamUrl && preloadAudioEl.src !== track._preloadedStreamUrl) { try { preloadAudioEl.removeAttribute('src'); preloadAudioEl.load(); } catch (_) {} }
+        perfSrcSet(perf, data.isLocal ? 'offline cache (server)' : (data.isDownload ? 'downloaded file' : 'lookup'));
         el.nativeAudio.src = data.streamUrl;
         playSmooth();
       }
@@ -4873,6 +4978,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       applyAudioSettings();
     } catch (err) {
       state.isLoadingTrack = false;
+      if (currentToken === state.loadToken) document.body.classList.remove('sl-track-loading');
       if (err.name === 'AbortError' && !didTimeoutAbort) return;
       if (currentToken === state.loadToken) {
         console.warn('Track playback notice:', err);
@@ -27233,6 +27339,7 @@ function bindCoverHoldZoom(wrapEl) {
   function buildHomeCard(track, mode, idx) {
     const card = document.createElement('div');
     card.className = 'my-wave-track-card';
+    card._trackData = track;
     if (typeof idx === 'number') card.dataset.index = String(idx);
     const thumbUrl = (typeof getTrackThumbUrl === 'function' ? getTrackThumbUrl(track) : '') || track.thumbnail || track.cover || track.image || '';
     card.innerHTML = `
@@ -27834,6 +27941,7 @@ function bindCoverHoldZoom(wrapEl) {
     list.forEach((track, idx) => {
       const tile = document.createElement('div');
       tile.className = 'sp-tile';
+      tile._trackData = track;
       const thumb = (typeof getTrackThumbUrl === 'function' ? getTrackThumbUrl(track) : '') || track._slArt || track.thumbnail || track.cover || '';
       applyCoverTintToCard(tile, thumb);
       const tileCover = document.createElement('div');
@@ -28196,7 +28304,7 @@ function bindCoverHoldZoom(wrapEl) {
     const scroll = row.scrollLeft;
     row.innerHTML = '';
     list.forEach((track, idx) => {
-      row.appendChild(spCard({
+      const card = spCard({
         cover: (typeof getTrackThumbUrl === 'function' ? getTrackThumbUrl(track) : '') || track.thumbnail || track.cover || '',
         title: track.title || 'Untitled',
         sub: track.artist || 'Unknown artist',
@@ -28205,7 +28313,9 @@ function bindCoverHoldZoom(wrapEl) {
           state.isRadioQueue = false;
           playTrack(track, [...list], idx);
         }
-      }));
+      });
+      if (card) card._trackData = track;
+      row.appendChild(card);
     });
     row.scrollLeft = scroll;
   }

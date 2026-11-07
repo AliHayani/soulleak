@@ -54,10 +54,18 @@
     return String(raw || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, CODE_LEN);
   }
 
+  // Your name in a room: one typed in the room panel wins; otherwise your Soulleak nickname (Settings > Account).
+  // The old automatic names ("Soul" + 4 digits) don't count as chosen, so people who never typed one get their
+  // nickname. Only with no nickname set (still "User") does it fall back to an automatic name.
+  const AUTO_NAME = /^Soul\d{4}$/;
   function getName() {
     let n = '';
     try { n = localStorage.getItem(NAME_KEY) || ''; } catch (_) {}
     n = n.trim().slice(0, 24);
+    if (n && !AUTO_NAME.test(n)) return n;
+    let nick = '';
+    try { nick = (localStorage.getItem('riff_user_nickname') || '').trim().slice(0, 24); } catch (_) {}
+    if (nick && nick !== 'User') return nick;
     if (!n) {
       n = 'Soul' + Math.floor(1000 + Math.random() * 9000);
       try { localStorage.setItem(NAME_KEY, n); } catch (_) {}
@@ -68,7 +76,13 @@
   function setName(n) {
     const clean = String(n || '').trim().slice(0, 24);
     if (!clean) return;
-    try { localStorage.setItem(NAME_KEY, clean); } catch (_) {}
+    let nick = '';
+    try { nick = (localStorage.getItem('riff_user_nickname') || '').trim().slice(0, 24); } catch (_) {}
+    // Same as your nickname: stay linked to it (a later nickname change follows) instead of saving a copy.
+    try {
+      if (clean === nick) localStorage.removeItem(NAME_KEY);
+      else localStorage.setItem(NAME_KEY, clean);
+    } catch (_) {}
   }
 
   function keyOf(t) {

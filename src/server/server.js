@@ -691,7 +691,47 @@ async function getYtVisitorData() {
   return cachedYtVisitorData;
 }
 
+// ---- Fast-start YouTube links ----
+// The fast lookup's links (iOS client) only serve the first ~1 MB without YouTube's extra token, then answer 403.
+// Each one is remembered with its video and format, a full link for the same file is fetched with yt-dlp in the
+// background right away, and the proxy switches to it mid-stream (handleGoogleVideoChunkedProxy).
+const gvFastLinks = new Map();   // fast link -> { vid, itag, clen }
+const gvFullLinks = new Map();   // vid:itag -> { at, promise, url }
+function gvFullLinkFor(vid, itag) {
+  const key = vid + ':' + itag;
+  const hit = gvFullLinks.get(key);
+  if (hit && Date.now() - hit.at < 30 * 60 * 1000) return hit.promise;
+  const entry = { at: Date.now(), url: null, promise: null };
+  entry.promise = executeYtDlp([
+    '--no-config', '-g', '--no-warnings', '--no-playlist', '--no-check-certificates',
+    '--socket-timeout', '10', '--retries', '1', '-f', String(itag), '--', `https://www.youtube.com/watch?v=${vid}`
+  ], 25000, { quiet: true }).then((out) => {
+    const u = String(out || '').split('\n').map((l) => l.trim()).find((l) => l.startsWith('http')) || null;
+    entry.url = u;
+    if (!u) gvFullLinks.delete(key);
+    return u;
+  }).catch(() => { gvFullLinks.delete(key); return null; });
+  gvFullLinks.set(key, entry);
+  while (gvFullLinks.size > 60) gvFullLinks.delete(gvFullLinks.keys().next().value);
+  return entry.promise;
+}
+function rememberFastGvLink(link, vid) {
+  try {
+    const u = new URL(link);
+    if (!/googlevideo\.com$/i.test(u.hostname) || (u.searchParams.get('c') || '').toUpperCase() !== 'IOS') return;
+    const itag = u.searchParams.get('itag');
+    if (!vid || !itag) return;
+    gvFastLinks.set(link, { vid, itag, clen: Number(u.searchParams.get('clen')) || 0 });
+    while (gvFastLinks.size > 120) gvFastLinks.delete(gvFastLinks.keys().next().value);
+  } catch (_) {}
+}
 async function fetchDirectYoutubeStreamServer(videoId, quality = 'medium') {
+  const link = await fetchDirectYoutubeStreamServerRaw(videoId, quality);
+  if (link) rememberFastGvLink(link, extractYtIdFromAny(videoId));
+  return link;
+}
+
+async function fetchDirectYoutubeStreamServerRaw(videoId, quality = 'medium') {
   const vid = extractYtIdFromAny(videoId);
   if (!vid) return null;
   const visitorData = '';
@@ -945,19 +985,28 @@ async function fetchSoundCloudTrackMeta(scUrlOrId) {
   };
 }
 
-async function fetchDirectSoundCloudStreamServer(scUrlOrId, queryFallback, match = null) {
+// info (optional): set to { unplayable: true } when the track was found but only as a preview / locked format.
+async function fetchDirectSoundCloudStreamServer(scUrlOrId, queryFallback, match = null, info = null) {
   let cid = await refreshSoundCloudClientId(false);
   const norm = normalizeSoundCloudUrl(scUrlOrId || '');
   const idMatch = String(norm).match(/(?:tracks\/|^)(\d{6,})/i);
+  // A song page address (soundcloud.com/artist/song) has no track number in it: SoundCloud's resolve endpoint turns
+  // it into the track. (Without this every SoundCloud song fell through to yt-dlp, about 4 s per click.)
+  const isPermalink = !idMatch && /^https?:\/\/(?:www\.|m\.)?soundcloud\.com\/[^/?#]+\/[^/?#]+/i.test(String(norm));
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
-      if (idMatch && idMatch[1]) {
-        const r = await fetch(`https://api-v2.soundcloud.com/tracks/${idMatch[1]}?client_id=${cid}`, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+      if ((idMatch && idMatch[1]) || isPermalink) {
+        const apiUrl = idMatch && idMatch[1]
+          ? `https://api-v2.soundcloud.com/tracks/${idMatch[1]}?client_id=${cid}`
+          : `https://api-v2.soundcloud.com/resolve?url=${encodeURIComponent(String(norm).split('?')[0])}&client_id=${cid}`;
+        const r = await fetch(apiUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } });
         if (r.status === 401 || r.status === 403) { cid = await refreshServerScClientId(); continue; }
         if (r.ok) {
           const tObj = await r.json();
-          const u = await resolveScTranscodingServer(tObj, cid);
+          const u = tObj && tObj.kind !== 'playlist' ? await resolveScTranscodingServer(tObj, cid) : null;
           if (u && !u.includes('/preview/') && !u.includes('cf-preview-media')) return u;
+          // Found, but nothing plays in full (Go+ preview, DRM only): no other SoundCloud tool can do better.
+          if (info && tObj && tObj.kind === 'track') info.unplayable = true;
         }
       }
       if (queryFallback) {
@@ -2894,6 +2943,10 @@ function makeCleanSearchQuery(artist, title) {
 
 async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube', title = '', artist = '', duration = 0, thumbnail = '', timeoutSec = 20) {
   const deadlineAt = Date.now() + timeoutSec * 1000;
+  // [Perf] the steps of this lookup with their times, logged when it answers.
+  const perfT0 = Date.now();
+  const perfSteps = [];
+  const perfMark = (step) => perfSteps.push(step + ' ' + (Date.now() - perfT0) + 'ms');
   let timedOut = false;
   const activeYtDlps = new Set();
   const stopActiveYtDlps = () => {
@@ -2917,6 +2970,7 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
   const runYtDlp = (args, limit, extraOpts = {}) => {
     const remaining = deadlineAt - Date.now();
     if (timedOut || remaining <= 0) return Promise.reject(new Error('Stream resolution timed out'));
+    perfMark('yt-dlp start');
     return executeYtDlp(args, Math.max(1, Math.min(limit, remaining)), {
       ...extraOpts,
       onChild: (proc) => {
@@ -2924,7 +2978,7 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
         proc.once('close', () => activeYtDlps.delete(proc));
         if (timedOut) proc.kill('SIGKILL');
       }
-    });
+    }).then((out) => { perfMark('yt-dlp done'); return out; }, (err) => { perfMark('yt-dlp failed'); throw err; });
   };
   artist = stripYoutubeTopic(artist);
   trackUrl = normalizeSoundCloudUrl(trackUrl);
@@ -3062,6 +3116,7 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
 
     const sendStreamResponse = (resolvedStreamUrl, resolvedId = null) => {
       if (res.writableEnded) return;
+      try { logger.log('info', '[Perf] stream-info "' + (artist ? artist + ' - ' : '') + title + '": ' + perfSteps.join(' > ') + (perfSteps.length ? ' > ' : '') + 'answer ' + (Date.now() - perfT0) + 'ms'); } catch (_) {}
       if (!resolvedStreamUrl) {
         res.writeHead(500, { 'Content-Type': 'application/json' });
         return res.end(JSON.stringify({ success: false, error: 'could not extract audio stream' }));
@@ -3100,8 +3155,9 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
       if (!forceYtDlp) {
         try {
           s = await fetchDirectYoutubeStreamServer(vid, quality);
+          perfMark('youtube direct ' + (s ? 'ok' : 'none'));
           if (s) return s;
-        } catch (_) {}
+        } catch (_) { perfMark('youtube direct error'); }
       }
       // The quick lookup failed (common on some PCs): yt-dlp gets this exact video. SoundCloud comes after that
       // (inside resolveYtCandidateStreamDlp), so a YouTube song never turns into somebody's SoundCloud upload first.
@@ -3142,10 +3198,14 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
 
     const resolveScCandidateStream = async (candUrl, candId) => {
       let s = null;
+      const scInfo = {};
       try {
-        s = await fetchDirectSoundCloudStreamServer(candUrl || candId, '');
+        s = await fetchDirectSoundCloudStreamServer(candUrl || candId, '', null, scInfo);
       } catch (_) {}
-      if (!s && candUrl && isSafeMediaUrl(candUrl)) {
+      perfMark('soundcloud direct ' + (s ? 'ok' : (scInfo.unplayable ? 'preview only' : 'none')));
+      // yt-dlp only helps when the fast lookup couldn't reach the track at all; a preview-only or locked track
+      // gives yt-dlp the same preview (and costs 4-6 s), so the song is looked up elsewhere straight away.
+      if (!s && !scInfo.unplayable && candUrl && isSafeMediaUrl(candUrl)) {
         try {
           const args = [
             '--no-config', '-g', '--no-warnings', '--no-playlist', '--no-check-certificates',
@@ -3205,16 +3265,19 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
     if (!streamUrl && searchQ) {
       const maxCand = needYtAuth ? 1 : 3;
       const needScRace = failedYtIds.size > 0 || !cleanId || !isRealYtId;
+      // Settles (either way) when the YouTube side is done; SoundCloud's head-start wait ends there.
+      let ytSettled;
+      const ytDone = new Promise((r) => { ytSettled = r; });
       const scFallback = needScRace
-        // YouTube gets a 4 s head start: SoundCloud usually answers first, and the artist's own YouTube upload
-        // is the surest original (4 s leaves time for yt-dlp when the quick lookup fails). SoundCloud still wins
-        // when YouTube is slow or has nothing.
+        // YouTube gets a head start of up to 4 s while it is still searching: SoundCloud usually answers first,
+        // and the artist's own YouTube upload is the surest original. The wait ends the moment YouTube has
+        // nothing (it used to always run the full 4 s, so every song that ended up on SoundCloud took 4+ s).
         ? (async () => {
           const raceStart = Date.now();
           const u = await fetchDirectSoundCloudStreamServer('', q || searchQ, scMatch);
           if (!u) throw new Error('no sc');
           const wait = 4000 - (Date.now() - raceStart);
-          if (wait > 0) await new Promise(r => setTimeout(r, wait));
+          if (wait > 0) await Promise.race([new Promise(r => setTimeout(r, wait)), ytDone]);
           return { url: u, id: null };
         })()
         : null;
@@ -3264,6 +3327,7 @@ async function handleStreamInfo(req, res, trackUrl, trackId, platform = 'youtube
         }
         throw new Error('no yt match');
       })();
+      ytCandidateResolution.then(() => ytSettled(), () => ytSettled());
 
       let bestMatch = null;
       if (scFallback) {
@@ -3987,7 +4051,8 @@ async function handleGoogleVideoChunkedProxy(req, res, targetUrl, initialUrl) {
   let parsed;
   try { parsed = new URL(targetUrl); } catch (_) { res.writeHead(400); return res.end('Invalid url'); }
   const ua = googleVideoUserAgent(parsed);
-  const CHUNK = 1536 * 1024;
+  // YouTube refuses single range requests above ~1 MB on these links (1 MB works, 1.5 MB is refused).
+  const CHUNK = 1024 * 1024;
   const mime = (parsed.searchParams.get('mime') || 'audio/mp4').replace(/%2F/i, '/');
   let total = parseInt(parsed.searchParams.get('clen') || '0', 10) || ytContentLengthByUrl.get(targetUrl) || 0;
 
@@ -4038,6 +4103,24 @@ async function handleGoogleVideoChunkedProxy(req, res, targetUrl, initialUrl) {
   };
 
   const state = { url: targetUrl };
+  const fast = gvFastLinks.get(initialUrl) || gvFastLinks.get(targetUrl);
+  const fullKey = fast ? fast.vid + ':' + fast.itag : '';
+  const fullReady = () => { const e = fullKey && gvFullLinks.get(fullKey); return e && e.url ? e.url : null; };
+  const sameFile = (u) => { try { const c = Number(new URL(u).searchParams.get('clen')) || 0; return !total || !c || c === total; } catch (_) { return false; } };
+  // Seeks and later requests go straight to the full link once it exists.
+  if (fullReady() && sameFile(fullReady())) state.url = fullReady();
+  // The song is really playing: fetch the full link in the background, 1 s in so it doesn't slow the start
+  // (the fast link's first ~1 MB is about a minute of audio). Only songs that play pay for it, not search results.
+  if (fast && !gvFullLinks.has(fullKey) && resolveBinary('yt-dlp')) setTimeout(() => gvFullLinkFor(fast.vid, fast.itag), 1000);
+  const switchToFull = async () => {
+    if (!fast || state.switched) return false;
+    state.switched = true;
+    const full = await gvFullLinkFor(fast.vid, fast.itag).catch(() => null);
+    if (!full || !sameFile(full)) return false;
+    state.url = full;
+    try { logger.log('info', '[Perf] fast YouTube link refused more data; continuing on the full link (' + fast.vid + ')'); } catch (_) {}
+    return true;
+  };
   try {
     if (!total) {
       
@@ -4069,9 +4152,15 @@ async function handleGoogleVideoChunkedProxy(req, res, targetUrl, initialUrl) {
       let pr;
       try { pr = await getChunk(pos, end, state); }
       catch (e) {
-        if (first) { evictStreamCache(initialUrl); evictStreamCache(targetUrl); }
-        try { res.destroy(); } catch (_) {}
-        return;
+        // The fast link stops at ~1 MB: carry on with the full link for the same file, same position.
+        if (!aborted && await switchToFull()) {
+          try { pr = await getChunk(pos, end, state); } catch (_) { pr = null; }
+        }
+        if (!pr) {
+          if (first) { evictStreamCache(initialUrl); evictStreamCache(targetUrl); }
+          try { res.destroy(); } catch (_) {}
+          return;
+        }
       }
       first = false;
       let got = 0;
@@ -4135,6 +4224,12 @@ async function handleAudioProxy(req, res, targetUrl, redirectsLeft = 5, origUrl 
     }
 
     const isGv = hostLower.endsWith('googlevideo.com');
+    // Links from the fast YouTube lookup (iOS client) refuse one request for the whole file, which the player
+    // asks for: go straight to 1 MB pieces instead of failing first.
+    if (isGv && (parsed.searchParams.get('c') || '').toUpperCase() === 'IOS' && !req._slChunked) {
+      req._slChunked = true;
+      return handleGoogleVideoChunkedProxy(req, res, targetUrl, initialUrl);
+    }
     const proxyReq = client.request(targetUrl, {
       method: req.method,
       family: 4,
@@ -4151,9 +4246,16 @@ async function handleAudioProxy(req, res, targetUrl, redirectsLeft = 5, origUrl 
         return handleAudioProxy(req, res, nextUrl, redirectsLeft - 1, initialUrl);
       }
       if (proxyRes.statusCode >= 400) {
+        proxyRes.resume();
+        // YouTube often refuses one request for the whole file (the player asks for 'bytes=0-') on these links,
+        // while pieces work. Fetch it in 1.5 MB pieces instead of failing: the failure used to send the player
+        // through a 4-6 s yt-dlp recovery on every fresh YouTube song.
+        if (isGv && !req._slChunked) {
+          req._slChunked = true;
+          return handleGoogleVideoChunkedProxy(req, res, targetUrl, initialUrl);
+        }
         evictStreamCache(initialUrl);
         evictStreamCache(targetUrl);
-        proxyRes.resume();
         res.writeHead(502, { 'Access-Control-Allow-Origin': '*' });
         return res.end('Upstream error');
       }

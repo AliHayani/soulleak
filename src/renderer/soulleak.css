@@ -4734,3 +4734,13 @@ body.sl-preset-on #playbar #btn-ob-presets {
 /* High Quality (beta) retired: its "engines" only nudged three ±4 dB filters and added distortion. Headphone
    correction does the real job. Always off (app.js), card hidden. */
 .hq-enhancer-card { display: none !important; }
+
+
+/* ---- Loading a song: a soft shimmer runs along the seek bar until the first audio arrives ---- */
+body.sl-track-loading .ob-seek-rail {
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.06) 0%, rgb(from var(--sl-accent, #7c3aed) r g b / 0.55) 50%, rgba(255, 255, 255, 0.06) 100%) !important;
+  background-size: 200% 100% !important;
+  animation: slSeekShimmer 0.9s linear infinite;
+}
+@keyframes slSeekShimmer { from { background-position: 200% 0; } to { background-position: 0% 0; } }
+body.perf.sl-track-loading .ob-seek-rail { animation: none; }
