@@ -126,6 +126,8 @@
         audioElement.addEventListener('play', () => this.resumeAudioContext());
         audioElement.addEventListener('pause', () => this.suspendAudioContextDebounced(5000));
         audioElement.addEventListener('ended', () => this.suspendAudioContextDebounced(5000));
+        // VHS Melt's tape hiss is only heard while a song plays.
+        ['play', 'playing', 'pause', 'ended', 'emptied'].forEach((ev) => audioElement.addEventListener(ev, () => this._gateHiss()));
       }
 
       if (!this.graphInitialized) {
@@ -248,11 +250,29 @@
           this.sigIn.channelInterpretation = 'speakers';
           this.sigDry = this.ctx.createGain();
           this.sigOut = this.ctx.createGain();
+          // Auto Studio Remaster slot (after headphone correction): rmIn -> rmDry -> normIn, or through the chain.
+          this.rmIn = this.ctx.createGain();
+          this.rmDry = this.ctx.createGain();
+          // Normalizer input. The loudness meter listens here, before the normalizer's own gain.
+          // (It used to listen to the 3-band EQ, which only carries sound while that EQ is on, so the normalizer
+          // saw silence and never moved.)
+          this.normIn = this.ctx.createGain();
+          this.rmIn.connect(this.rmDry);
+          this.rmDry.connect(this.normIn);
+          this.normIn.connect(this.normGain);
+          // Rough K-weighting (ITU-R BS.1770): low cut at 38 Hz, +4 dB shelf above 1.5 kHz.
+          this.kHp = this.ctx.createBiquadFilter();
+          this.kHp.type = 'highpass'; this.kHp.frequency.value = 38; this.kHp.Q.value = 0.5;
+          this.kShelf = this.ctx.createBiquadFilter();
+          this.kShelf.type = 'highshelf'; this.kShelf.frequency.value = 1500; this.kShelf.gain.value = 4;
+          this.normIn.connect(this.kHp);
+          this.kHp.connect(this.kShelf);
+          this.kShelf.connect(this.levelAnalyser);
           this.masterGain.disconnect(this.normGain);
           this.masterGain.connect(this.sigIn);
           this.sigIn.connect(this.sigDry);
           this.sigDry.connect(this.sigOut);
-          this.sigOut.connect(this.normGain);
+          this.sigOut.connect(this.rmIn);
           this.normLimiter.connect(this.analyserNode);
           // 8D sits between the analyser and the fade stage: a dry path plus an orbiting HRTF panner,
           // mixed by audioSettings.spatial8d (0 = off, 1 = full orbit).
@@ -260,12 +280,18 @@
           this.spatialDry.gain.value = 1.0;
           this.analyserNode.connect(this.spatialDry);
           this.spatialDry.connect(this.fadeGain);
-          this.fadeGain.connect(this.ctx.destination);
-          this.eqHigh.connect(this.levelAnalyser);
+          // Your volume is the very last stage. It used to be set on the <audio> element, i.e. before the graph,
+          // so the normalizer measured "quiet" whenever the volume was low and boosted it back up.
+          this.userGain = this.ctx.createGain();
+          this.fadeGain.connect(this.userGain);
+          this.userGain.connect(this.ctx.destination);
 
           this.graphInitialized = true;
           this._updateRouting();
           this._applyHeadphoneEq();
+          this.setNormalizeEnabled(!!this.normalizeOn);
+          this._applyMasterVolume();
+          if (this.remaster) this._applyRemaster(true);
         } catch (e) {
           console.warn('[AudioEngine] Graph initialization notice:', e);
         }
@@ -394,13 +420,14 @@
     _applyHeadphoneEq() {
       if (!this.ctx || !this.masterGain || !this.normGain || !this.hpPreamp) return;
       const src = this.sigOut || this.masterGain;
+      const dest = this.rmIn || this.normGain;
       try { src.disconnect(); } catch (e) {}
       try { this.hpPreamp.disconnect(); } catch (e) {}
       (this.hpFilters || []).forEach((f) => { try { f.disconnect(); } catch (e) {} });
       this.hpFilters = [];
       const prof = this.headphoneEq;
       if (!prof) {
-        src.connect(this.normGain);
+        src.connect(dest);
         return;
       }
       const TYPES = ['peaking', 'lowshelf', 'highshelf'];
@@ -420,7 +447,7 @@
         this.hpFilters.push(f);
       });
       src.connect(this.hpPreamp);
-      last.connect(this.normGain);
+      last.connect(dest);
     }
 
     // ---- Signature presets ----
@@ -548,18 +575,40 @@
         const ghostOut = gain(0.45);
         midHigh.connect(tap); tap.connect(dark); dark.connect(ghost); ghost.connect(ghostOut); ghostOut.connect(output);
       } else if (name === 'vhs') {
-        // Wow (0.55 Hz sine, ±1.2 ms) + flutter (6.5 Hz triangle, ±0.15 ms) on a 10 ms delay, tape warmth,
-        // highs above 9.5 kHz rolled off, mud below 55 Hz cut.
-        const mud = biquad('highpass', 55, 0.707);
-        const tapeDelay = delay(0.010);
-        const wow = osc('sine', 0.55), flutter = osc('triangle', 6.5);
-        const wowDepth = gain(0.0012), flutterDepth = gain(0.00015);
+        // A 90s CRT TV playing a worn tape: 85 % mono (one centre speaker), a 250 Hz-3.9 kHz cabinet with a hollow
+        // 340 Hz box resonance and a 2.15 kHz bite, a crunchy VCR preamp (asymmetric tanh + 12-bit steps), wow and
+        // flutter on a 15 ms tape delay, plus gated tape hiss and 60 Hz hum. Tape Wear scales crunch, wobble and hiss.
+        const split = N(ctx.createChannelSplitter(2));
+        const merge = N(ctx.createChannelMerger(2));
+        input.connect(split);
+        // side x0.15: L' = 0.575 L + 0.425 R, R' = 0.575 R + 0.425 L
+        const ll = gain(0.575), rr = gain(0.575), lr = gain(0.425), rl = gain(0.425);
+        split.connect(ll, 0); split.connect(lr, 0);
+        split.connect(rr, 1); split.connect(rl, 1);
+        ll.connect(merge, 0, 0); rl.connect(merge, 0, 0);
+        rr.connect(merge, 0, 1); lr.connect(merge, 0, 1);
+        const hp = biquad('highpass', 250, 0.9);
+        const box = biquad('peaking', 340, 2.2, 4.5);
+        const bite = biquad('peaking', 2150, 1.6, 7.5);
+        const lp = biquad('lowpass', 3900, 1.2);
+        const pre = N(ctx.createWaveShaper());
+        pre.oversample = '2x';
+        const makeup = gain(0.68);
+        const tapeDelay = delay(0.015, 0.1);
+        const wow = osc('sine', 0.65), flutter = osc('triangle', 7.5);
+        const wowDepth = gain(0.0028), flutterDepth = gain(0.00045);
         wow.connect(wowDepth); wowDepth.connect(tapeDelay.delayTime);
         flutter.connect(flutterDepth); flutterDepth.connect(tapeDelay.delayTime);
-        const warmth = shaper(2.2);
-        const body = biquad('peaking', 850, 0.8, 1.5);
-        const roll = biquad('lowpass', 9500, 0.707);
-        input.connect(mud); mud.connect(tapeDelay); tapeDelay.connect(warmth); warmth.connect(body); body.connect(roll); roll.connect(output);
+        merge.connect(hp); hp.connect(box); box.connect(bite); bite.connect(lp); lp.connect(pre); pre.connect(makeup);
+        makeup.connect(tapeDelay); tapeDelay.connect(output);
+        // Tape hiss + CRT hum, looping, muted while paused (see _gateHiss).
+        const hiss = ctx.createBufferSource();
+        hiss.buffer = this._vhsHissBuffer();
+        hiss.loop = true;
+        oscs.push(hiss);
+        const hissGain = gain(0);
+        hiss.connect(hissGain); hissGain.connect(output);
+        Object.assign(params, { pre, bite, wowDepth, flutterDepth, hissGain });
       } else {
         return null;
       }
@@ -601,6 +650,203 @@
       dry.linearRampToValueAtTime(0, now + L + T);
       this._sig = chain;
       if (name === 'bathroom') this._applyDoor(this.door || 0, true);
+      if (name === 'vhs') { this._applyTapeWear(true); this._gateHiss(); }
+    }
+
+    // ---- VHS Melt: Tape Wear 0..1 (0.5 = the reference sound) ----
+    setTapeWear(amount) {
+      const v = Number(amount);
+      this.tapeWear = Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : 0.5;
+      this._applyTapeWear(false);
+    }
+
+    _vhsWear() { return Number.isFinite(this.tapeWear) ? this.tapeWear : 0.5; }
+
+    _applyTapeWear(instant) {
+      const c = this._sig;
+      if (!c || c.name !== 'vhs' || !this.ctx) return;
+      const w = this._vhsWear();
+      const p = c.params;
+      const drive = 1.5 + 4.6 * w; // 3.8 at 50 %
+      if (instant || Math.abs((p.drive || 0) - drive) > 0.04) {
+        p.drive = drive;
+        p.pre.curve = this._vcrCurve(drive);
+      }
+      const set = (param, v) => (instant ? param.setValueAtTime(v, this.ctx.currentTime) : this._glide(param, v));
+      set(p.wowDepth.gain, 0.0056 * w);
+      set(p.flutterDepth.gain, 0.0009 * w);
+      set(p.bite.gain, 4.5 + 6 * w);
+      this._gateHiss();
+    }
+
+    // Asymmetric tanh (even harmonics, like a tape preamp) quantized to 12-bit steps.
+    _vcrCurve(k) {
+      const n = 4096;
+      const curve = new Float32Array(n);
+      const bias = 0.12;
+      const off = Math.tanh(k * bias);
+      const norm = Math.max(Math.abs(Math.tanh(k * (1 + bias)) - off), Math.abs(Math.tanh(k * (-1 + bias)) - off)) || 1;
+      for (let i = 0; i < n; i++) {
+        const x = (i * 2) / (n - 1) - 1;
+        const y = (Math.tanh(k * (x + bias)) - off) / norm;
+        curve[i] = Math.round(y * 2048) / 2048;
+      }
+      return curve;
+    }
+
+    _vhsHissBuffer() {
+      if (this._hissBuf && this._hissBuf.sampleRate === this.ctx.sampleRate) return this._hissBuf;
+      const rate = this.ctx.sampleRate;
+      const len = Math.floor(rate * 4); // 4 s loop; 60 Hz fits it exactly
+      const buf = this.ctx.createBuffer(2, len, rate);
+      for (let ch = 0; ch < 2; ch++) {
+        const d = buf.getChannelData(ch);
+        let hpPrev = 0, hpOut = 0, lp = 0;
+        for (let i = 0; i < len; i++) {
+          const n = Math.random() * 2 - 1;
+          hpOut = 0.97 * (hpOut + n - hpPrev); hpPrev = n; // cut the rumble: hiss lives up high
+          lp = lp * 0.45 + hpOut * 0.55;                    // and soften the very top
+          const t = i / rate;
+          const hum = 0.32 * Math.sin(2 * Math.PI * 60 * t) + 0.14 * Math.sin(2 * Math.PI * 120 * t) + 0.07 * Math.sin(2 * Math.PI * 180 * t);
+          d[i] = lp * 0.55 + hum;
+        }
+      }
+      this._hissBuf = buf;
+      return buf;
+    }
+
+    _gateHiss() {
+      const c = this._sig;
+      if (!c || c.name !== 'vhs' || !c.params.hissGain || !this.ctx) return;
+      const el = this._attachedElement;
+      const playing = !!(el && !el.paused && !el.ended);
+      const target = playing ? 0.016 * (0.4 + 1.2 * this._vhsWear()) : 0;
+      try {
+        const g = c.params.hissGain.gain;
+        g.cancelScheduledValues(this.ctx.currentTime);
+        g.setTargetAtTime(target, this.ctx.currentTime, playing ? 0.15 : 0.02);
+      } catch (_) {}
+    }
+
+    // ---- Auto Studio Remaster: universal target curve, harmonic exciter, stereo widener ----
+    // mode: 'warm' | 'crisp' | 'punch'; null turns it off.
+    setRemaster(mode) {
+      const MODES = ['warm', 'crisp', 'punch'];
+      this.remaster = MODES.includes(mode) ? mode : null;
+      if (this.graphInitialized) this._applyRemaster(false);
+    }
+
+    _remasterParams(mode) {
+      return ({
+        warm:  { trim: -1.0, sub: 3.0, mud: -2.0, pres: 1.2, exc: 0.10, air: 1.5, width: 1.0 },
+        crisp: { trim: -1.5, sub: 3.8, mud: -2.8, pres: 2.2, exc: 0.18, air: 3.0, width: 1.8 },
+        punch: { trim: -2.0, sub: 5.5, mud: -3.5, pres: 2.8, exc: 0.22, air: 3.5, width: 2.2 },
+      })[mode] || null;
+    }
+
+    _buildRemaster() {
+      const ctx = this.ctx;
+      const nodes = [];
+      const N = (n) => { nodes.push(n); return n; };
+      const gain = (v) => { const g = N(ctx.createGain()); g.gain.value = v; return g; };
+      const biquad = (type, f, q, g) => { const b = N(ctx.createBiquadFilter()); b.type = type; b.frequency.value = f; if (q !== undefined) b.Q.value = q; if (g !== undefined) b.gain.value = g; return b; };
+      const input = gain(1);
+      const trim = gain(1);
+      const sub = biquad('peaking', 58, 1.1, 0);
+      const mud = biquad('peaking', 290, 1.4, 0);
+      const pres = biquad('peaking', 3200, 1.2, 0);
+      input.connect(trim); trim.connect(sub); sub.connect(mud); mud.connect(pres);
+      // Exciter: the band above 5.5 kHz through a soft saturator (odd + even harmonics), blended back in.
+      const sum = gain(1);
+      pres.connect(sum);
+      const excHp = biquad('highpass', 5500, 0.707);
+      const exciter = N(ctx.createWaveShaper());
+      exciter.oversample = '4x';
+      const n = 2048, curve = new Float32Array(n);
+      for (let i = 0; i < n; i++) {
+        const x = (i * 2) / (n - 1) - 1;
+        curve[i] = Math.tanh(3 * x) / Math.tanh(3) + 0.3 * x * x;
+      }
+      exciter.curve = curve;
+      const excClean = biquad('highpass', 4000, 0.707); // drops the DC and low products the even harmonics make
+      const excWet = gain(0);
+      pres.connect(excHp); excHp.connect(exciter); exciter.connect(excClean); excClean.connect(excWet); excWet.connect(sum);
+      const air = biquad('highshelf', 11000, undefined, 0);
+      sum.connect(air);
+      // Widener: side above 300 Hz up, side below 120 Hz removed (bass stays mono).
+      const split = N(ctx.createChannelSplitter(2));
+      const merge = N(ctx.createChannelMerger(2));
+      air.connect(split);
+      const mid = gain(1), side = gain(1);
+      const mL = gain(0.5), mR = gain(0.5), sL = gain(0.5), sR = gain(-0.5);
+      split.connect(mL, 0); split.connect(mR, 1); mL.connect(mid); mR.connect(mid);
+      split.connect(sL, 0); split.connect(sR, 1); sL.connect(side); sR.connect(side);
+      const sideKeep = biquad('highpass', 120, 0.707);
+      const sideHigh = biquad('highpass', 300, 0.707);
+      const sideBoost = gain(0);
+      const sideOut = gain(1);
+      side.connect(sideKeep); sideKeep.connect(sideOut);
+      side.connect(sideHigh); sideHigh.connect(sideBoost); sideBoost.connect(sideOut);
+      const sideNeg = gain(-1);
+      sideOut.connect(sideNeg);
+      mid.connect(merge, 0, 0); mid.connect(merge, 0, 1);
+      sideOut.connect(merge, 0, 0); sideNeg.connect(merge, 0, 1);
+      const output = gain(1);
+      merge.connect(output);
+      return { input, output, nodes, params: { trim, sub, mud, pres, excWet, air, sideBoost } };
+    }
+
+    _applyRemaster(instant) {
+      if (!this.ctx || !this.rmIn || !this.normIn) return;
+      const now = this.ctx.currentTime;
+      const T = instant ? 0.01 : 0.3;
+      const p = this._remasterParams(this.remaster);
+      if (p && !this._rm) {
+        const chain = this._buildRemaster();
+        chain.wet = this.ctx.createGain();
+        chain.wet.gain.setValueAtTime(0, now);
+        this.rmIn.connect(chain.input);
+        chain.output.connect(chain.wet);
+        chain.wet.connect(this.normIn);
+        this._rm = chain;
+      }
+      const c = this._rm;
+      if (!c) return;
+      const ramp = (param, v) => { param.cancelScheduledValues(now); param.setValueAtTime(param.value, now); param.linearRampToValueAtTime(v, now + T); };
+      if (p) {
+        clearTimeout(this._rmTeardown);
+        const q = c.params;
+        ramp(q.trim.gain, Math.pow(10, p.trim / 20));
+        ramp(q.sub.gain, p.sub);
+        ramp(q.mud.gain, p.mud);
+        ramp(q.pres.gain, p.pres);
+        ramp(q.excWet.gain, p.exc);
+        ramp(q.air.gain, p.air);
+        ramp(q.sideBoost.gain, Math.pow(10, p.width / 20) - 1);
+        ramp(c.wet.gain, 1);
+        ramp(this.rmDry.gain, 0);
+      } else {
+        ramp(c.wet.gain, 0);
+        ramp(this.rmDry.gain, 1);
+        clearTimeout(this._rmTeardown);
+        this._rmTeardown = setTimeout(() => {
+          if (this.remaster || this._rm !== c) return;
+          try { this.rmIn.disconnect(c.input); } catch (_) {}
+          [c.input, ...c.nodes, c.output, c.wet].forEach((x) => { try { x.disconnect(); } catch (_) {} });
+          this._rm = null;
+        }, T * 1000 + 150);
+      }
+    }
+
+    // ---- Normalizer stage B: while on, a mastering limiter catches what the boost pushes up ----
+    setNormalizeEnabled(on) {
+      this.normalizeOn = !!on;
+      const L = this.normLimiter;
+      if (!L || !this.ctx) return;
+      const v = on
+        ? { threshold: -3.5, knee: 6, ratio: 12, attack: 0.003, release: 0.15 }
+        : { threshold: -2, knee: 0, ratio: 20, attack: 0.003, release: 0.1 };
+      Object.keys(v).forEach((k) => this.setParamNow(L[k], v[k], v[k]));
     }
 
     _teardownSignature(chain) {
@@ -843,18 +1089,89 @@
       }
       const raw = this.isMuted ? 0 : Math.max(0, Math.min(1, Number.isFinite(this.volume) ? this.volume : 0.85));
       const vol = raw * raw;
-      this.appliedElementVolume = vol;
+      const routed = !!(this.graphInitialized && this.userGain);
+      const elementVol = routed ? 1 : vol;
+      this.appliedElementVolume = elementVol;
+      if (this.userGain && this.ctx) {
+        try {
+          const g = this.userGain.gain;
+          g.cancelScheduledValues(this.ctx.currentTime);
+          g.setTargetAtTime(raw === 0 ? 0 : vol, this.ctx.currentTime, 0.015);
+        } catch (_) {}
+      }
       if (this._attachedElement) {
         try {
-          this._attachedElement.volume = vol;
+          this._attachedElement.volume = elementVol;
           this._attachedElement.muted = this.graphInitialized ? false : !!this.isMuted;
         } catch (_) {}
       }
       if (this.masterGain) {
-        try {
-          this.masterGain.gain.value = this.isMuted ? 0 : (Number.isFinite(this.audioSettings.volume) ? this.audioSettings.volume : 1.0);
-        } catch (e) {}
+        const target = this.isMuted ? 0 : (Number.isFinite(this.audioSettings.volume) ? this.audioSettings.volume : 1.0);
+        // An end-of-song fade-out keeps running; anything else is replaced right away.
+        if (this.isFadingOut()) return;
+        this._fadeOutUntil = 0;
+        // During a fade-in, aim the rest of the ramp at the new level instead of jumping to it.
+        const left = this.ctx && this._fadeInUntil ? this._fadeInUntil - this.ctx.currentTime : 0;
+        if (left > 0.05) {
+          if (this._fadeInTarget !== target) { this._fadeInTarget = target; this.safeRampParam(this.masterGain.gain, target, left, 1.0); }
+        }
+        else this.setParamNow(this.masterGain.gain, target, 1.0);
       }
+    }
+
+    // Set an AudioParam now, dropping anything scheduled on it. A bare `.value =` is ignored while a ramp is
+    // pending and throws during setValueCurveAtTime, which left the volume stuck at 0.
+    setParamNow(param, value, fallback = 1.0) {
+      if (!param || !this.ctx) return;
+      const v = Number.isFinite(value) ? value : fallback;
+      const now = this.ctx.currentTime;
+      try {
+        param.cancelScheduledValues(now);
+        param.setValueAtTime(v, now);
+      } catch (_) {
+        try { param.value = v; } catch (__) {}
+      }
+    }
+
+    // Cancel, anchor the current value, then a linear ramp: safe to call again at any moment.
+    // `from` sets the start level; without it the ramp starts where the param is now.
+    safeRampParam(param, target, duration, fallback = 1.0, from = null) {
+      if (!param || !this.ctx) return;
+      const v = Number.isFinite(target) ? target : fallback;
+      const now = this.ctx.currentTime;
+      const d = Number.isFinite(duration) && duration > 0 ? duration : 0.01;
+      try {
+        if (Number.isFinite(from)) {
+          param.cancelScheduledValues(now);
+          param.setValueAtTime(from, now);
+        } else if (typeof param.cancelAndHoldAtTime === 'function') {
+          // Holds the level the audio thread is really at; `.value` can lag a change made moments ago.
+          param.cancelAndHoldAtTime(now);
+        } else {
+          const cur = Number.isFinite(param.value) ? param.value : fallback;
+          param.cancelScheduledValues(now);
+          param.setValueAtTime(cur, now);
+        }
+        param.linearRampToValueAtTime(v, now + d);
+      } catch (_) {
+        this.setParamNow(param, v, fallback);
+      }
+    }
+
+    isFading() {
+      return this.isFadingOut() || !!(this.ctx && this._fadeInUntil && this.ctx.currentTime < this._fadeInUntil + 0.5);
+    }
+
+    isFadingOut() {
+      return !!(this.ctx && this._fadeOutUntil && this.ctx.currentTime < this._fadeOutUntil + 0.5);
+    }
+
+    // Playback started or resumed: undo any leftover pause fade and make sure the context is running.
+    ensureAudible() {
+      if (!this.ctx) return;
+      if (this.fadeGain && this.fadeGain.gain.value < 0.999) this.setParamNow(this.fadeGain.gain, 1.0, 1.0);
+      if (this.normGain && !(this.normGain.gain.value >= 0.3)) this.setParamNow(this.normGain.gain, 1.0, 1.0);
+      this.resumeAudioContext();
     }
 
     isModified() {
@@ -868,21 +1185,21 @@
 
     fadeOut(durationSec = 0.25) {
       if (this.masterGain && this.ctx) {
-        const current = this.masterGain.gain.value;
-        this.masterGain.gain.cancelScheduledValues(this.ctx.currentTime);
-        this.masterGain.gain.setValueAtTime(Math.max(0.001, current), this.ctx.currentTime);
-        this.masterGain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + durationSec);
+        const d = Number.isFinite(durationSec) && durationSec > 0 ? durationSec : 0.25;
+        this._fadeOutUntil = this.ctx.currentTime + d;
+        this._fadeInUntil = 0;
+        this.safeRampParam(this.masterGain.gain, 0, d, 0);
       }
     }
 
-    fadeIn(durationSec = 0.35) {
+    // Cancels a running fade-out, starting from wherever the volume is now.
+    fadeIn(durationSec = 0.35, fromZero = false) {
       if (this.masterGain && this.ctx) {
-        this.masterGain.gain.cancelScheduledValues(this.ctx.currentTime);
-        this.masterGain.gain.setValueAtTime(0.001, this.ctx.currentTime);
-        const targetVol = (this.isMuted ? 0 : 1) * (this.audioSettings.volume || 1.0);
-        this.masterGain.gain.exponentialRampToValueAtTime(
-          Math.max(0.001, targetVol), this.ctx.currentTime + durationSec
-        );
+        this._fadeOutUntil = 0;
+        this._fadeInUntil = this.ctx.currentTime + (Number.isFinite(durationSec) && durationSec > 0 ? durationSec : 0.35);
+        const vol = Number.isFinite(this.audioSettings.volume) ? this.audioSettings.volume : 1.0;
+        this._fadeInTarget = this.isMuted ? 0 : vol;
+        this.safeRampParam(this.masterGain.gain, this._fadeInTarget, durationSec, 1.0, fromZero ? 0 : null);
       }
     }
 
@@ -899,8 +1216,15 @@
       if (this._suspendTimer) clearTimeout(this._suspendTimer);
       this._suspendTimer = setTimeout(() => {
         this._suspendTimer = null;
+        const el = this._attachedElement;
+        if (el && !el.paused) return;
         if (this.ctx && this.ctx.state === 'running') {
-          this.ctx.suspend().catch(() => {});
+          this._suspendPending = true;
+          this.ctx.suspend().catch(() => {}).finally(() => {
+            this._suspendPending = false;
+            // Playback started while it was going to sleep: wake it straight back up.
+            if (this._attachedElement && !this._attachedElement.paused) this.resumeAudioContext();
+          });
         }
       }, delayMs);
     }
@@ -910,7 +1234,7 @@
         clearTimeout(this._suspendTimer);
         this._suspendTimer = null;
       }
-      if (this.ctx && this.ctx.state === 'suspended') {
+      if (this.ctx && (this.ctx.state !== 'running' || this._suspendPending) && this.ctx.state !== 'closed') {
         return this.ctx.resume().catch(() => {});
       }
     }
@@ -943,7 +1267,13 @@
 
     setNormalizeGainDb(db) {
       if (!this.normGain || !this.ctx) return;
-      this.normGain.gain.setTargetAtTime(Math.pow(10, db / 20), this.ctx.currentTime, 0.8);
+      const raw = Math.pow(10, Number(db) / 20);
+      const safe = Number.isFinite(raw) ? Math.min(3.0, Math.max(0.5, raw)) : 1.0;
+      try {
+        this.normGain.gain.setTargetAtTime(safe, this.ctx.currentTime, 0.4);
+      } catch (_) {
+        this.setParamNow(this.normGain.gain, safe, 1.0);
+      }
     }
 
 

@@ -897,6 +897,46 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
     }
     if (playlistsChanged) localStorage.setItem('devsize_playlists', JSON.stringify(state.playlists));
+    if (localStorage.getItem('sl_addedat_v2') !== '1') {
+      // Imports used to stamp a whole list within the same few milliseconds, in list
+      // order, so "newest" showed the oldest song first. Runs of 3+ tracks stamped
+      // within 50 ms of each other are one import: re-stamp them so index 0 is the
+      // newest. Songs added one at a time keep their own time.
+      const fixTies = (tracks) => {
+        if (!Array.isArray(tracks)) return tracks;
+        let changed = false;
+        const out = tracks.slice();
+        let i = 0;
+        while (i < out.length) {
+          let j = i + 1;
+          while (j < out.length && out[j] && out[j - 1] && typeof out[j].addedAt === 'number' && typeof out[j - 1].addedAt === 'number'
+            && Math.abs(out[j].addedAt - out[j - 1].addedAt) < 50) j++;
+          if (j - i >= 3) {
+            let top = -Infinity;
+            for (let k = i; k < j; k++) top = Math.max(top, out[k].addedAt);
+            for (let k = i; k < j; k++) {
+              const want = top - (k - i);
+              if (out[k].addedAt !== want) { out[k] = { ...out[k], addedAt: want }; changed = true; }
+            }
+          }
+          i = j;
+        }
+        return changed ? out : tracks;
+      };
+      const favs = fixTies(state.favorites);
+      if (favs !== state.favorites) {
+        state.favorites = favs;
+        localStorage.setItem('devsize_favorites', JSON.stringify(state.favorites));
+      }
+      let plFixed = false;
+      for (const pl of state.playlists) {
+        if (!pl || !Array.isArray(pl.tracks)) continue;
+        const tracks = fixTies(pl.tracks);
+        if (tracks !== pl.tracks) { pl.tracks = tracks; plFixed = true; }
+      }
+      if (plFixed) localStorage.setItem('devsize_playlists', JSON.stringify(state.playlists));
+      localStorage.setItem('sl_addedat_v2', '1');
+    }
   }
 
   migrateAddedAt();
@@ -2778,23 +2818,87 @@ document.addEventListener('DOMContentLoaded', async () => {
   let hlsInstance = null;
   animationFrameId = null;
 
+  // Normalize volume, stage A: every 100 ms, read the song's short-term loudness (K-weighted, before the
+  // normalizer) and steer its gain toward -14 LUFS, between -6 and +9.5 dB. Readings under -50 dBFS (silence,
+  // quiet intros, buffering) are skipped, so a pause never cranks the noise up. Stage B is the engine's limiter.
   let levelAvgDb = -120;
+  let normGainDbNow = 0;
+  let normBadgeAt = 0;
+  const NORM_TARGET_LUFS = -14;
   function normalizeEnabled() { return localStorage.getItem('riff_audio_normalize') === '1'; }
-  function resetLevelWatcher() { levelAvgDb = -120; if (audioEngine && audioEngine.setNormalizeGainDb) audioEngine.setNormalizeGainDb(0); }
+  function resetLevelWatcher() { levelAvgDb = -120; normGainDbNow = 0; if (audioEngine && audioEngine.setNormalizeGainDb) audioEngine.setNormalizeGainDb(0); updateNormBadge(true); }
+  function updateNormBadge(force) {
+    const badge = document.getElementById('norm-badge');
+    if (!badge) return;
+    const now = Date.now();
+    if (!force && now - normBadgeAt < 300) return;
+    normBadgeAt = now;
+    const on = normalizeEnabled();
+    badge.hidden = !on;
+    if (!on) return;
+    const audio = el.nativeAudio;
+    let text;
+    if (!audio || audio.paused || !state.isPlaying) text = 'Active · paused';
+    else if (levelAvgDb <= -120) text = 'Active · listening…';
+    else if (Math.abs(normGainDbNow) < 0.15) text = 'Active · on target';
+    else text = `Active · ${normGainDbNow > 0 ? '+' : '−'}${Math.abs(normGainDbNow).toFixed(1)} dB ${normGainDbNow > 0 ? 'boost' : 'trim'}`;
+    if (badge.textContent !== text) badge.textContent = text;
+    badge.classList.toggle('is-trim', normGainDbNow < -0.15);
+  }
   setInterval(() => {
     const audio = el.nativeAudio;
-    if (!audioEngine || !audioEngine.getLevelDb || !audio || audio.paused || !state.isPlaying) return;
-    const db = audioEngine.getLevelDb();
-    if (normalizeEnabled()) {
-      if (db > -50) {
-        levelAvgDb = levelAvgDb <= -120 ? db : levelAvgDb + (db - levelAvgDb) * 0.05;
-        const gainDb = Math.max(-9, Math.min(9, -17 - levelAvgDb));
-        audioEngine.setNormalizeGainDb(gainDb);
-      }
-    } else if (levelAvgDb > -120) {
-      resetLevelWatcher();
+    const on = normalizeEnabled();
+    if (!on) {
+      if (levelAvgDb > -120 || Math.abs(normGainDbNow) > 0) resetLevelWatcher();
+      return;
     }
+    if (!audioEngine || !audioEngine.getLevelDb || !audio || audio.paused || !state.isPlaying) { updateNormBadge(false); return; }
+    const db = audioEngine.getLevelDb();
+    if (Number.isFinite(db) && db > -50) {
+      // Mono RMS of a stereo mix ≈ LUFS - 2.3 (BS.1770 sums both channels' power and subtracts 0.691).
+      const lufs = db + 2.3;
+      levelAvgDb = levelAvgDb <= -120 ? lufs : levelAvgDb + (lufs - levelAvgDb) * 0.06;
+      if (!Number.isFinite(levelAvgDb)) levelAvgDb = lufs;
+      normGainDbNow = Math.max(-6, Math.min(9.5, NORM_TARGET_LUFS - levelAvgDb));
+      audioEngine.setNormalizeGainDb(normGainDbNow);
+    }
+    updateNormBadge(false);
   }, 100);
+  if (audioEngine.setNormalizeEnabled) audioEngine.setNormalizeEnabled(normalizeEnabled());
+
+  // Watchdog: while a song plays, the audio context must be running and no gain stage may sit near 0
+  // unless something meant it (mute, the end-of-song fade, a pause fade, the exit wind-down).
+  setInterval(() => { try {
+    const audio = el.nativeAudio;
+    const eng = audioEngine;
+    if (!eng || !eng.ctx || !audio || audio.paused || !state.isPlaying || windingDown) return;
+    if (eng.ctx.state === 'suspended' || eng.ctx.state === 'interrupted') {
+      // Waking the sound device can take a moment when a song starts after a long pause; only a context that is
+      // still asleep a second later is a real problem worth logging. Asking it to resume again is harmless.
+      if (eng._wdSuspendedTicks = (eng._wdSuspendedTicks || 0) + 1, eng._wdSuspendedTicks >= 2) {
+        console.warn('[AudioWatchdog] Audio context was ' + eng.ctx.state + ' during playback; resuming');
+      }
+      eng.ctx.resume().catch(() => {});
+    } else {
+      eng._wdSuspendedTicks = 0;
+    }
+    let pauseFading = false;
+    try { pauseFading = isPauseFading; } catch (_) {}
+    if (pauseFading) return;
+    if (eng.fadeGain && !(eng.fadeGain.gain.value >= 0.05)) {
+      console.warn('[AudioWatchdog] Recovered stuck deck gain (fade stage)');
+      eng.setParamNow(eng.fadeGain.gain, 1.0, 1.0);
+    }
+    if (eng.normGain && !(eng.normGain.gain.value >= 0.05)) {
+      console.warn('[AudioWatchdog] Recovered stuck deck gain (normalizer)');
+      eng.setParamNow(eng.normGain.gain, 1.0, 1.0);
+    }
+    const want = eng.isMuted ? 0 : (Number.isFinite(eng.audioSettings.volume) ? eng.audioSettings.volume : 1.0);
+    if (eng.masterGain && want >= 0.05 && !(eng.masterGain.gain.value >= 0.05) && !crossfadeFadingOut && !eng.isFading()) {
+      console.warn('[AudioWatchdog] Recovered stuck deck gain');
+      eng.setParamNow(eng.masterGain.gain, want, 1.0);
+    }
+  } catch (_) {} }, 1000);
 
   syncSettingsSlidersToState();
   updateHqRouting();
@@ -4707,7 +4811,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     crossfadeTriggered = false;
     crossfadeFadingOut = false;
     state.nextTrackPrefetched = false;
+    state._stallRecoverCount = 0;
+    try { smoothFadeToken++; isPauseFading = false; } catch (_) {}
     initAudioContext();
+    if (audioEngine && audioEngine.isFadingOut && audioEngine.isFadingOut() && !crossfadeFadeInPending) audioEngine.fadeIn(0.15);
     el.nativeAudio.preload = 'auto';
 
     try { if (el.nativeAudio && !el.nativeAudio.paused) el.nativeAudio.pause(); } catch (_) {}
@@ -8852,6 +8959,18 @@ document.addEventListener('DOMContentLoaded', async () => {
           }
           try { el.nativeAudio.pause(); } catch (_) {}
           el.nativeAudio.src = d.streamUrl;
+          // Carry on where it cut out (this used to restart the song from 0:00).
+          const pos = Number(resumePos) || 0;
+          if (pos > 1) {
+            const audio = el.nativeAudio;
+            const seekBack = () => {
+              if (myToken !== state.loadToken) return;
+              const dur = audio.duration;
+              if (Number.isFinite(dur) && dur > 0 && pos >= dur - 1) return;
+              try { audio.currentTime = pos; } catch (_) {}
+            };
+            audio.addEventListener('loadedmetadata', seekBack, { once: true });
+          }
           playSmooth();
           return;
         }
@@ -8883,12 +9002,22 @@ document.addEventListener('DOMContentLoaded', async () => {
       clearPlaybackStallTimer();
       const token = state.loadToken;
       const stallPos = (el.nativeAudio && Number.isFinite(el.nativeAudio.currentTime)) ? el.nativeAudio.currentTime : 0;
+      // A song that was already playing and cut out (the CDN dropped the connection) gets a fresh link after 4 s.
+      // The first load and fresh seeks keep the long wait: slow lookups and far seeks aren't stalls.
+      const midSong = state.isPlaying && stallPos > 2 && Date.now() - (state._lastSeekAt || 0) > 3000;
+      const recoverCount = state._stallRecoverCount || 0;
+      const stallMs = midSong && recoverCount < 3 && navigator.onLine !== false ? 4000 : 28000;
       playbackStallTimer = setTimeout(() => {
         playbackStallTimer = null;
         if (token !== state.loadToken || !el.nativeAudio || el.nativeAudio.paused || el.nativeAudio.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA) return;
         if (Math.abs((el.nativeAudio.currentTime || 0) - stallPos) > 0.5) return;
+        if (stallMs < 28000) {
+          state._stallRecoverCount = recoverCount + 1;
+          console.warn(`[AudioWatchdog] Stream stalled at ${stallPos.toFixed(1)}s; getting a fresh link`);
+          if (state.currentTrack) delete state.currentTrack._preloadedStreamUrl;
+        }
         recoverCurrentStream(el.nativeAudio.currentTime || 0);
-      }, 28000);
+      }, stallMs);
     }
 
     el.nativeAudio.addEventListener('error', () => {
@@ -9008,13 +9137,14 @@ document.addEventListener('DOMContentLoaded', async () => {
       hasDrawnPausedFrame = false;
       if (!animationFrameId) startVisualizers();
       if (audioEngine) {
-        if (audioEngine.resumeAudioContext) audioEngine.resumeAudioContext();
+        if (audioEngine.ensureAudible) audioEngine.ensureAudible();
+        else if (audioEngine.resumeAudioContext) audioEngine.resumeAudioContext();
         audioEngine._applyMasterVolume();
       }
       if (crossfadeFadeInPending && !crossfadeFadingOut) {
         crossfadeFadeInPending = false;
         const X = getCrossfadeSeconds();
-        if (X > 0 && audioEngine) audioEngine.fadeIn(X);
+        if (X > 0 && audioEngine) audioEngine.fadeIn(X, true);
       }
       if (typeof m3cStart === 'function') m3cStart();
     });
@@ -9119,6 +9249,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       updateMediaPositionState();
     });
 
+    el.nativeAudio.addEventListener('seeking', () => { state._lastSeekAt = Date.now(); });
     el.nativeAudio.addEventListener('seeked', () => {
       // Seeking back out of an end-of-track fade brings the volume back and re-arms the crossfade.
       if (crossfadeFadingOut) {
@@ -9170,7 +9301,16 @@ document.addEventListener('DOMContentLoaded', async () => {
       const dur = getReliableTrackDuration();
 
       const X = getCrossfadeSeconds();
-      if (X > 0 && !crossfadeTriggered && !state.isRepeat && !(window.SoulleakLT && window.SoulleakLT.holdAutoplay()) && dur > Math.max(X * 2, 20) && cur >= dur - X && (!audioEngine || !audioEngine.isLiveStream(el.nativeAudio))) {
+      // The song's listed length can be wrong for the upload that actually plays; fading on it muted the rest of
+      // the song (or skipped it early). Only the audio's own length counts here.
+      const realDur = (el.nativeAudio && Number.isFinite(el.nativeAudio.duration) && el.nativeAudio.duration > 1) ? el.nativeAudio.duration : 0;
+      if (crossfadeFadingOut && realDur && cur < realDur - X - 0.5 && audioEngine) {
+        crossfadeFadingOut = false;
+        crossfadeTriggered = false;
+        crossfadeFadeInPending = false;
+        audioEngine.fadeIn(0.25);
+      }
+      if (X > 0 && !crossfadeTriggered && !state.isRepeat && !(window.SoulleakLT && window.SoulleakLT.holdAutoplay()) && realDur > Math.max(X * 2, 20) && cur >= realDur - X && (!audioEngine || !audioEngine.isLiveStream(el.nativeAudio))) {
         crossfadeTriggered = true;
         crossfadeFadeInPending = true;
         if (startCrossfadeTailFromCurrent(X)) {
@@ -11732,8 +11872,9 @@ document.addEventListener('DOMContentLoaded', async () => {
           } else if (context === 'playlist') {
             const pl = state.playlists.find(p => p.id === state.currentPlaylistId);
             if (pl && pl.tracks) {
-              currentList = sortTracksFor('playlist', pl.tracks, pl.id);
+              currentList = playlistPlayOrder(pl);
               clickIndex = currentList.findIndex(t => isSameTrack(t, track));
+              if (clickIndex < 0) { currentList = sortTracksFor('playlist', pl.tracks, pl.id); clickIndex = currentList.findIndex(t => isSameTrack(t, track)); }
             }
           } else if (context === 'artist') {
             const artistTracks = (state.currentArtistData && state.currentArtistData.tracks) || tracks;
@@ -11859,6 +12000,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         search: 'No matching tracks. Try a different search',
         favorites: 'No favourites yet. Use the heart on a track to save it',
         playlist: 'This playlist is empty',
+        'offline-vault': 'No offline songs yet. Songs you play a few times are saved here automatically',
         local: 'Your library is empty. Add some music to get started'
       };
       container.innerHTML = `<div class="empty-hint">${emptyMessages[context] || 'No tracks to show'}</div>`;
@@ -12801,6 +12943,13 @@ function renderClickableArtists(container, rawArtist, hintTrack = null) {
     return { ...track, addedAt: Date.now() };
   }
 
+  // Bulk adds (imports): imported lists are newest-first, so index 0 gets the latest
+  // stamp and each next track 1 ms less. Every track ends up with its own time.
+  function stampAddedAtBatch(tracks) {
+    const now = Date.now();
+    return (tracks || []).map((t, i) => ({ ...t, addedAt: now - i }));
+  }
+
   function renderFavoritesView() {
     const query = el.favoritesSearchInput ? el.favoritesSearchInput.value.trim().toLowerCase() : '';
     let filtered = state.favorites;
@@ -13737,7 +13886,7 @@ function renderClickableArtists(container, rawArtist, hintTrack = null) {
       id: 'pl_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7),
       name: name.trim(),
       tracks: Array.isArray(initialTracks)
-        ? initialTracks.map(t => (t && typeof t.addedAt === 'number') ? t : stampAddedAt(t))
+        ? (() => { const now = Date.now(); return initialTracks.map((t, i) => (t && typeof t.addedAt === 'number') ? t : { ...t, addedAt: now - i }); })()
         : []
     };
     if (cover && typeof cover === 'string' && cover.trim()) {
@@ -13751,6 +13900,40 @@ function renderClickableArtists(container, rawArtist, hintTrack = null) {
       hydrateMissingPlaylistCovers(newPl);
     }
     return newPl;
+  }
+
+  // A song plays offline when it's in the offline cache or download folder, or it's a local file.
+  function isTrackOffline(t) {
+    if (!t) return false;
+    if (t.platform === 'local' || String(t.id || '').startsWith('local')) return true;
+    try { return offlineIds.has(String(t.id)); } catch (_) { return false; }
+  }
+  function isPlaylistOfflineOnly() {
+    try { return localStorage.getItem('sl_offline_only') === '1'; } catch (_) { return false; }
+  }
+  // The playlist exactly as the list shows it (sort + Offline only), for Play, Shuffle and row clicks.
+  function playlistPlayOrder(pl) {
+    const list = sortTracksFor('playlist', (pl && pl.tracks) || [], pl && pl.id);
+    return isPlaylistOfflineOnly() ? list.filter(isTrackOffline) : list;
+  }
+  // Play a list from #1 in order (shuffle off), or shuffled (shuffle on).
+  function playListFromTop(list, context, shuffle) {
+    if (!Array.isArray(list) || list.length === 0) return;
+    const q = [...list];
+    if (shuffle) {
+      for (let i = q.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [q[i], q[j]] = [q[j], q[i]];
+      }
+    }
+    state.isRadioQueue = false;
+    state.queueHistory = [];
+    if (state.isShuffle !== shuffle) {
+      state.isShuffle = shuffle;
+      localStorage.setItem('riff_shuffle', shuffle ? '1' : '0');
+      if (el.btnShuffle) el.btnShuffle.classList.toggle('active', shuffle);
+    }
+    playTrack(q[0], q, 0, context);
   }
 
   function openPlaylistDetail(playlistId) {
@@ -13809,6 +13992,10 @@ function renderClickableArtists(container, rawArtist, hintTrack = null) {
       );
     }
     filtered = sortTracksFor('playlist', filtered, pl.id);
+    const offOnly = isPlaylistOfflineOnly();
+    if (offOnly) filtered = filtered.filter(isTrackOffline);
+    const offBtn = document.getElementById('btn-playlist-offline-only');
+    if (offBtn) { offBtn.classList.toggle('active', offOnly); offBtn.setAttribute('aria-pressed', offOnly ? 'true' : 'false'); }
     if (el.playlistSort) {
       el.playlistSort.value = getTrackSortMode('playlist');
       const plLabel = document.getElementById('playlist-sort-label');
@@ -13821,9 +14008,9 @@ function renderClickableArtists(container, rawArtist, hintTrack = null) {
         });
       }
     }
-    const totalSec = (pl.tracks || []).reduce((acc, t) => acc + (t.duration || 0), 0);
+    const totalSec = ((query || offOnly) ? filtered : (pl.tracks || [])).reduce((acc, t) => acc + (t.duration || 0), 0);
     const durStr = totalSec > 0 ? ` • ${formatDuration(totalSec)}` : '';
-    if (el.playlistDetailCount) el.playlistDetailCount.textContent = (query ? `${filtered.length} of ${pl.tracks.length} tracks` : `${pl.tracks.length} tracks`) + durStr;
+    if (el.playlistDetailCount) el.playlistDetailCount.textContent = ((query || offOnly) ? `${filtered.length} of ${pl.tracks.length} tracks${offOnly ? ' offline' : ''}` : `${pl.tracks.length} tracks`) + durStr;
     const detailCover = document.getElementById('playlist-detail-cover');
     if (detailCover) {
       renderPlaylistCover(detailCover, pl, 160);
@@ -14346,7 +14533,7 @@ function renderClickableArtists(container, rawArtist, hintTrack = null) {
 
     const applyView = () => {
       document.querySelectorAll('.no-enter-anim').forEach(c => c.classList.remove('no-enter-anim'));
-      [el.viewDiscover, el.viewSoul, el.viewPlayback, el.viewFavorites, el.viewAlbums, el.viewLocal, el.viewHistory, el.viewQueue, el.viewPlaylistDetail, el.viewAlbum, el.viewArtist].forEach(v => {
+      [el.viewDiscover, el.viewSoul, el.viewPlayback, el.viewFavorites, el.viewAlbums, el.viewLocal, el.viewHistory, el.viewQueue, el.viewPlaylistDetail, el.viewAlbum, el.viewArtist, document.getElementById('view-offline-vault')].forEach(v => {
         if (v) v.classList.remove('active');
       });
       if (viewName !== 'soul' && el.viewSoul) el.viewSoul.classList.remove('soul-enter', 'soul-settled');
@@ -14400,6 +14587,10 @@ function renderClickableArtists(container, rawArtist, hintTrack = null) {
             if (el.viewHistory) el.viewHistory.classList.add('active');
             if (el.navHistory) el.navHistory.classList.add('active');
             renderHistoryView();
+          } else if (viewName === 'offline-vault') {
+            const vv = document.getElementById('view-offline-vault');
+            if (vv) vv.classList.add('active');
+            openOfflineVault();
           } else if (viewName === 'queue') {
             if (el.viewQueue) el.viewQueue.classList.add('active');
             if (el.navQueue) el.navQueue.classList.add('active');
@@ -19763,7 +19954,7 @@ function bindCoverHoldZoom(wrapEl) {
       savePlaylist: (name, tracks, cover) => {
         const existing = state.playlists.find((p) => p && p.name === name);
         if (existing) {
-          existing.tracks = tracks.map((t) => stampAddedAt(t));
+          existing.tracks = stampAddedAtBatch(tracks);
           if (cover) existing.cover = cover;
           localStorage.setItem('devsize_playlists', JSON.stringify(state.playlists));
           renderPlaylistsList();
@@ -19848,11 +20039,60 @@ function bindCoverHoldZoom(wrapEl) {
     if (after > 0 && offlinePlays[t.id] >= after) offlineSave(t);
   }
 
+  // Offline Vault songs: the cache list, matched to the full saved track when we know it
+  // (keeps its album, links and liked state), with the cover from the local copy.
+  function setOfflineVaultTracks(list, downloadedTracks = []) {
+    const known = new Map();
+    [...(state.history || []), ...((state.playlists || []).flatMap((p) => (p && p.tracks) || [])), ...(state.favorites || [])]
+      .forEach((t) => { if (t && t.id) known.set(String(t.id), t); });
+    state.offlineVault = (list || []).filter((x) => x && x.id).map((x) => {
+      const k = known.get(String(x.id));
+      const base = k ? { ...k } : { id: String(x.id), title: x.title, artist: x.artist, duration: x.duration || 0, platform: x.platform || 'youtube', thumbnail: x.thumbnail || '' };
+      if (x.localThumbnail) base.thumbnail = x.localThumbnail;
+      if (!base.duration && x.duration) base.duration = x.duration;
+      base.cachedAt = x.cachedAt || x.lastPlayed || 0;
+      return base;
+    });
+    // Songs in the download folder play offline too: list them after the cached ones.
+    const have = new Set(state.offlineVault.map((t) => String(t.id)));
+    (downloadedTracks || []).forEach((t) => {
+      if (t && t.id && !have.has(String(t.id))) { have.add(String(t.id)); state.offlineVault.push({ ...t, cachedAt: 0 }); }
+    });
+  }
+  function offlineVaultShown() {
+    const sel = document.getElementById('vault-sort');
+    const mode = sel ? sel.value : 'cached';
+    const q = String((document.getElementById('vault-search-input') || {}).value || '').trim().toLowerCase();
+    let list = (state.offlineVault || []).slice();
+    if (q) list = list.filter((t) => String(t.title || '').toLowerCase().includes(q) || String(t.artist || '').toLowerCase().includes(q));
+    const by = (f) => (a, b) => String(f(a) || '').localeCompare(String(f(b) || ''), undefined, { sensitivity: 'base', numeric: true });
+    if (mode === 'title') list.sort(by((t) => t.title));
+    else if (mode === 'artist') list.sort((a, b) => by((t) => t.artist)(a, b) || by((t) => t.title)(a, b));
+    else list.sort((a, b) => (b.cachedAt || 0) - (a.cachedAt || 0));
+    return list;
+  }
+  function renderOfflineVault() {
+    const box = document.getElementById('vault-tracks-list');
+    if (!box) return;
+    const list = offlineVaultShown();
+    const all = (state.offlineVault || []).length;
+    const totalSec = list.reduce((acc, t) => acc + (t.duration || 0), 0);
+    const cnt = document.getElementById('vault-count');
+    if (cnt) cnt.textContent = (list.length === all ? `${all} ${all === 1 ? 'track' : 'tracks'}` : `${list.length} of ${all} tracks`) + (totalSec > 0 ? ` • ${formatDuration(totalSec)}` : '');
+    renderTracks(box, list, 'offline-vault');
+  }
+  async function openOfflineVault() {
+    renderOfflineVault();
+    await refreshOfflineIds();
+    if (state.currentView === 'offline-vault') renderOfflineVault();
+  }
+
   async function refreshOfflineIds() {
     try {
       const d = await (await fetch(`http://127.0.0.1:${state.serverPort}/api/offline-library`)).json();
       if (!d || !d.success) return;
       offlineIds.clear();
+      const dlTracks = [];
       (d.tracks || []).forEach((x) => { if (x.id) offlineIds.add(String(x.id)); });
       // Songs in the download folder play offline too; match them like the server does ("artist - title").
       const dl = new Set(d.downloaded || []);
@@ -19860,9 +20100,14 @@ function bindCoverHoldZoom(wrapEl) {
         const clean = (s) => String(s || '').replace(/[<>:"/\\|?*]/g, '').replace(/\s+/g, ' ').trim();
         const known = [...(state.history || []), ...(state.favorites || []), ...((state.playlists || []).flatMap((p) => (p && p.tracks) || []))];
         known.forEach((t) => {
-          if (t && t.id && dl.has(`${clean(t.artist || 'unknown artist')} - ${clean(t.title || 'untitled')}`.toLowerCase())) offlineIds.add(String(t.id));
+          if (t && t.id && dl.has(`${clean(t.artist || 'unknown artist')} - ${clean(t.title || 'untitled')}`.toLowerCase())) {
+            if (!offlineIds.has(String(t.id))) dlTracks.push(t);
+            offlineIds.add(String(t.id));
+          }
         });
       }
+      setOfflineVaultTracks(d.tracks, dlTracks);
+      if (typeof renderSidebarLibraryFeed === 'function') renderSidebarLibraryFeed();
       syncOfflineMarks();
       if (typeof updateOfflineStorageUI === 'function') updateOfflineStorageUI();
     } catch (_) {}
@@ -20016,6 +20261,7 @@ function bindCoverHoldZoom(wrapEl) {
   // Graceful exit, osu!-style. The main process holds the close for `ms`; in that time the song winds down like a
   // record stopping (playback rate and pitch sink together) while the volume fades, the UI goes to black, and
   // then the logo comes in.
+  let windingDown = false;
   function windDownAudio(ms) {
     const audio = el.nativeAudio;
     if (!audio || audio.paused) return;
@@ -20028,10 +20274,10 @@ function bindCoverHoldZoom(wrapEl) {
     const startVol = audio.volume;
     if (gain) {
       const now = audioEngine.ctx.currentTime;
-      const from = Math.max(0.0001, gain.value);
-      const curve = new Float32Array(64).map((_, i) => from * Math.pow(1 - i / 63, 1.6));
       gain.cancelScheduledValues(now);
-      gain.setValueCurveAtTime(curve, now, span / 1000);
+      gain.setValueAtTime(Math.max(0, gain.value), now);
+      gain.setTargetAtTime(0, now, span / 1000 / 3);
+      windingDown = true;
     }
     const t0 = performance.now();
     // A timer rather than requestAnimationFrame, so the wind-down still runs if the window is hidden.
@@ -20227,11 +20473,22 @@ function bindCoverHoldZoom(wrapEl) {
     if (audioEngine && audioEngine.setDoor) audioEngine.setDoor(v);
   }
   if (audioEngine && audioEngine.setDoor) audioEngine.setDoor(getDoor());
+  // VHS Melt's Tape Wear (0..1, 0.5 = reference), remembered too.
+  function getTapeWear() {
+    const raw = localStorage.getItem('sl_vhs_wear');
+    const v = raw === null ? 0.5 : Number(raw);
+    return Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : 0.5;
+  }
+  function setTapeWear(v) {
+    localStorage.setItem('sl_vhs_wear', String(v));
+    if (audioEngine && audioEngine.setTapeWear) audioEngine.setTapeWear(v);
+  }
+  if (audioEngine && audioEngine.setTapeWear) audioEngine.setTapeWear(getTapeWear());
   // The Door slider shows only while 3AM Bathroom is on; the menu stays anchored above the dock button.
   function syncDoorRow(menu) {
-    const row = menu && menu.querySelector('.sl-door-row');
-    if (!row) return;
-    row.hidden = state.activePresetId !== 'p_bathroom';
+    const rows = menu ? [...menu.querySelectorAll('.sl-door-row[data-for]')] : [];
+    if (!rows.length) return;
+    rows.forEach((row) => { row.hidden = state.activePresetId !== row.dataset.for; });
     const r = dockPresetsBtn.getBoundingClientRect();
     menu.style.top = `${Math.max(8, r.top - menu.offsetHeight - 12)}px`;
   }
@@ -20247,6 +20504,7 @@ function bindCoverHoldZoom(wrapEl) {
       e.stopPropagation();
       const item = (id, label, extra) => `<button type="button" role="menuitemradio" data-preset="${escapeHtml(id)}" class="${state.activePresetId === id ? 'is-active' : ''}">${extra || ''}<span>${escapeHtml(label)}</span></button>`;
       const door = Math.round(getDoor() * 100);
+      const wear = Math.round(getTapeWear() * 100);
       const own = (state.customPresets || []);
       const html = `<div class="sl-dock-menu-head">Presets</div>`
         + item('p_default', 'Original')
@@ -20254,8 +20512,10 @@ function bindCoverHoldZoom(wrapEl) {
         + ROW_FX_PRESETS.filter((p) => p.id !== 'p_default').map((p) => item(p.id, p.label)).join('')
         + `<div class="sl-preset-group sl-preset-group-sl">Soulleak originals</div>`
         + SIGNATURE_PRESETS.map((p) => item(p.id, p.name) + (p.signature === 'bathroom'
-          ? `<label class="sl-door-row"><span>Door</span><input type="range" min="0" max="100" step="1" value="${door}" aria-label="Open the door"><em>${door}%</em></label>`
-          : '')).join('')
+          ? `<label class="sl-door-row" data-for="p_bathroom" data-kind="door"><span>Door</span><input type="range" min="0" max="100" step="1" value="${door}" aria-label="Open the door"><em>${door}%</em></label>`
+          : p.signature === 'vhs'
+            ? `<label class="sl-door-row sl-wear-row" data-for="p_vhs" data-kind="wear"><span>Tape Wear</span><input type="range" min="0" max="100" step="1" value="${wear}" aria-label="Tape wear"><em>${wear}%</em></label>`
+            : '')).join('')
         + (own.length ? `<div class="sl-preset-group">Yours</div>` + own.map((p) => item(p.id, p.name || 'Custom preset')).join('') : '');
       openDockMenu(dockPresetsBtn, 'sl-presets-menu', html, (ev, menu) => {
         const b = ev.target.closest('button[data-preset]');
@@ -20271,15 +20531,17 @@ function bindCoverHoldZoom(wrapEl) {
       });
       const menu = document.querySelector('.sl-presets-menu');
       if (menu) {
-        const range = menu.querySelector('.sl-door-row input');
-        if (range) {
+        menu.querySelectorAll('.sl-door-row[data-kind]').forEach((row) => {
+          const range = row.querySelector('input');
+          if (!range) return;
           range.addEventListener('input', () => {
-            setDoor(Number(range.value) / 100);
-            const out = menu.querySelector('.sl-door-row em');
+            if (row.dataset.kind === 'wear') setTapeWear(Number(range.value) / 100);
+            else setDoor(Number(range.value) / 100);
+            const out = row.querySelector('em');
             if (out) out.textContent = range.value + '%';
           });
           range.addEventListener('click', (e) => e.stopPropagation());
-        }
+        });
         syncDoorRow(menu);
       }
     });
@@ -21203,9 +21465,50 @@ function bindCoverHoldZoom(wrapEl) {
       const active = !toggleNormalize.classList.contains('active');
       toggleNormalize.classList.toggle('active', active);
       localStorage.setItem('riff_audio_normalize', active ? '1' : '0');
+      if (audioEngine && audioEngine.setNormalizeEnabled) audioEngine.setNormalizeEnabled(active);
       if (!active) resetLevelWatcher();
+      updateNormBadge(true);
     });
+    updateNormBadge(true);
   }
+
+  // Auto Studio Remaster: on/off + style, remembered.
+  (function initRemaster() {
+    const card = document.getElementById('remaster-card');
+    const toggle = document.getElementById('toggle-remaster');
+    const pill = document.getElementById('hp-eq-remaster-pill');
+    const read = (k, d) => { try { const v = localStorage.getItem(k); return v === null ? d : v; } catch (_) { return d; } };
+    const write = (k, v) => { try { localStorage.setItem(k, v); } catch (_) {} };
+    const isOn = () => read('sl_remaster_on', '0') === '1';
+    const mode = () => { const m = read('sl_remaster_mode', 'crisp'); return ['warm', 'crisp', 'punch'].includes(m) ? m : 'crisp'; };
+    const apply = () => { if (audioEngine && audioEngine.setRemaster) audioEngine.setRemaster(isOn() ? mode() : null); };
+    const render = () => {
+      const on = isOn();
+      if (toggle) toggle.classList.toggle('active', on);
+      if (card) {
+        card.classList.toggle('is-on', on);
+        card.querySelectorAll('.sl-rm-mode').forEach((b) => {
+          const sel = b.dataset.mode === mode();
+          b.classList.toggle('is-active', sel);
+          b.setAttribute('aria-checked', sel ? 'true' : 'false');
+        });
+      }
+      if (pill) pill.classList.toggle('is-on', on);
+    };
+    if (toggle) toggle.addEventListener('click', () => { write('sl_remaster_on', isOn() ? '0' : '1'); render(); apply(); });
+    if (card) card.querySelectorAll('.sl-rm-mode').forEach((b) => b.addEventListener('click', () => {
+      write('sl_remaster_mode', b.dataset.mode);
+      write('sl_remaster_on', '1');
+      render(); apply();
+    }));
+    if (pill) pill.addEventListener('click', () => {
+      write('sl_remaster_on', '1');
+      render(); apply();
+      if (card) { card.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); card.classList.add('sl-rm-flash'); setTimeout(() => card.classList.remove('sl-rm-flash'), 900); }
+    });
+    render();
+    apply();
+  })();
 
   (function initUpdateUI() {
     const api = window.electronAPI;
@@ -23643,7 +23946,7 @@ function bindCoverHoldZoom(wrapEl) {
       if (targetVal === '__favorites__') {
         const existingMap = new Set(state.favorites.map(f => getTrackCanonicalId(f) || f.id));
         const newFavs = foundTracks.filter(t => !existingMap.has(getTrackCanonicalId(t) || t.id));
-        state.favorites.push(...newFavs.map(stampAddedAt));
+        state.favorites.push(...stampAddedAtBatch(newFavs));
         localStorage.setItem('devsize_favorites', JSON.stringify(state.favorites));
         if (typeof updateFavoritesBadge === 'function') updateFavoritesBadge();
         if (typeof updateFavoriteIcon === 'function') updateFavoriteIcon();
@@ -23655,7 +23958,7 @@ function bindCoverHoldZoom(wrapEl) {
           if (!pl.cover && data.cover) pl.cover = data.cover;
           const existingIds = new Set(pl.tracks.map(t => t.id));
           const newTracks = foundTracks.filter(t => !existingIds.has(t.id));
-          pl.tracks.push(...newTracks.map(stampAddedAt));
+          pl.tracks.push(...stampAddedAtBatch(newTracks));
           localStorage.setItem('devsize_playlists', JSON.stringify(state.playlists));
           renderPlaylistsList();
           if (state.currentView === 'playlist-detail' && state.currentPlaylistId === targetVal) {
@@ -24131,7 +24434,7 @@ function bindCoverHoldZoom(wrapEl) {
           if (!pl.cover && data.cover) pl.cover = data.cover;
           const existingIds = new Set(pl.tracks.map(t => t.id));
           const newTracks = foundTracks.filter(t => !existingIds.has(t.id));
-          pl.tracks.push(...newTracks.map(stampAddedAt));
+          pl.tracks.push(...stampAddedAtBatch(newTracks));
           localStorage.setItem('devsize_playlists', JSON.stringify(state.playlists));
           renderPlaylistsList();
           hydrateMissingPlaylistCovers(pl);
@@ -24626,7 +24929,7 @@ function bindCoverHoldZoom(wrapEl) {
         if (targetPlId === '__favorites__') {
           const existingMap = new Set(state.favorites.map(f => getTrackCanonicalId(f) || f.id));
           const newFavs = foundTracks.filter(t => !existingMap.has(getTrackCanonicalId(t) || t.id));
-          state.favorites.push(...newFavs.map(stampAddedAt));
+          state.favorites.push(...stampAddedAtBatch(newFavs));
           localStorage.setItem('devsize_favorites', JSON.stringify(state.favorites));
           if (typeof updateFavoritesBadge === 'function') updateFavoritesBadge();
           if (typeof updateFavoriteIcon === 'function') updateFavoriteIcon();
@@ -24638,7 +24941,7 @@ function bindCoverHoldZoom(wrapEl) {
             if (!targetPl.cover && data.cover) targetPl.cover = data.cover;
             const existingIds = new Set(targetPl.tracks.map(t => t.id));
             const newTracks = foundTracks.filter(t => !existingIds.has(t.id));
-            targetPl.tracks.push(...newTracks.map(stampAddedAt));
+            targetPl.tracks.push(...stampAddedAtBatch(newTracks));
             localStorage.setItem('devsize_playlists', JSON.stringify(state.playlists));
             renderPlaylistsList();
             if (state.currentView === 'playlist-detail' && state.currentPlaylistId === targetPlId) {
@@ -24685,7 +24988,7 @@ function bindCoverHoldZoom(wrapEl) {
       if (targetPlId === '__favorites__') {
         const existingMap = new Set(state.favorites.map(f => getTrackCanonicalId(f) || f.id));
         const newFavs = foundTracks.filter(t => !existingMap.has(getTrackCanonicalId(t) || t.id));
-        state.favorites.push(...newFavs.map(stampAddedAt));
+        state.favorites.push(...stampAddedAtBatch(newFavs));
         localStorage.setItem('devsize_favorites', JSON.stringify(state.favorites));
         if (typeof updateFavoritesBadge === 'function') updateFavoritesBadge();
         if (typeof updateFavoriteIcon === 'function') updateFavoriteIcon();
@@ -24697,7 +25000,7 @@ function bindCoverHoldZoom(wrapEl) {
           if (!targetPl.cover && data.cover) targetPl.cover = data.cover;
           const existingIds = new Set(targetPl.tracks.map(t => t.id));
           const newTracks = foundTracks.filter(t => !existingIds.has(t.id));
-          targetPl.tracks.push(...newTracks.map(stampAddedAt));
+          targetPl.tracks.push(...stampAddedAtBatch(newTracks));
           localStorage.setItem('devsize_playlists', JSON.stringify(state.playlists));
           renderPlaylistsList();
           if (state.currentView === 'playlist-detail' && state.currentPlaylistId === targetPlId) {
@@ -26319,22 +26622,45 @@ function bindCoverHoldZoom(wrapEl) {
     btnPlayPlaylistShuffle.addEventListener('click', () => {
       const pl = (state.playlists || []).find(p => p.id === state.currentPlaylistId);
       if (!pl || !pl.tracks || pl.tracks.length === 0) return;
-      const list = sortTracksFor('playlist', pl.tracks, pl.id);
-      const shuffled = [...list];
-      for (let i = shuffled.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-      }
-      state.isRadioQueue = false;
-      state.queueHistory = [];
-      if (!state.isShuffle) {
-        state.isShuffle = true;
-        localStorage.setItem('riff_shuffle', '1');
-        if (el.btnShuffle) el.btnShuffle.classList.add('active');
-      }
-      playTrack(shuffled[0], shuffled, 0, 'playlist');
+      const list = playlistPlayOrder(pl);
+      if (list.length === 0) { showToast('No offline songs in this playlist yet', 'info'); return; }
+      playListFromTop(list, 'playlist', false);
     });
   }
+  const btnShufflePlaylist = document.getElementById('btn-shuffle-playlist');
+  if (btnShufflePlaylist) {
+    btnShufflePlaylist.addEventListener('click', () => {
+      const pl = (state.playlists || []).find(p => p.id === state.currentPlaylistId);
+      if (!pl || !pl.tracks || pl.tracks.length === 0) return;
+      const list = playlistPlayOrder(pl);
+      if (list.length === 0) { showToast('No offline songs in this playlist yet', 'info'); return; }
+      playListFromTop(list, 'playlist', true);
+    });
+  }
+  const btnPlaylistOfflineOnly = document.getElementById('btn-playlist-offline-only');
+  if (btnPlaylistOfflineOnly) {
+    btnPlaylistOfflineOnly.addEventListener('click', () => {
+      try { localStorage.setItem('sl_offline_only', isPlaylistOfflineOnly() ? '0' : '1'); } catch (_) {}
+      if (state.currentPlaylistId) openPlaylistDetail(state.currentPlaylistId);
+    });
+  }
+
+  // ---- Offline Vault: a smart playlist of every song in the offline cache ----
+  const vaultSortSel = document.getElementById('vault-sort');
+  const vaultSearch = document.getElementById('vault-search-input');
+  if (vaultSortSel) {
+    try { const m = localStorage.getItem('sl_vault_sort'); if (m) vaultSortSel.value = m; } catch (_) {}
+    vaultSortSel.addEventListener('change', () => {
+      try { localStorage.setItem('sl_vault_sort', vaultSortSel.value); } catch (_) {}
+      renderOfflineVault();
+    });
+    setupSortDropdown('vault-sort-dropdown', 'vault-sort-trigger', 'vault-sort-menu', 'vault-sort-label', vaultSortSel);
+  }
+  if (vaultSearch) vaultSearch.addEventListener('input', () => renderOfflineVault());
+  const btnVaultPlay = document.getElementById('btn-vault-play');
+  if (btnVaultPlay) btnVaultPlay.addEventListener('click', () => playListFromTop(offlineVaultShown(), 'offline-vault', false));
+  const btnVaultShuffle = document.getElementById('btn-vault-shuffle');
+  if (btnVaultShuffle) btnVaultShuffle.addEventListener('click', () => playListFromTop(offlineVaultShown(), 'offline-vault', true));
 
   refreshNavBadges();
   renderPlaylistsList();
@@ -30446,6 +30772,7 @@ function bindCoverHoldZoom(wrapEl) {
     const sigParts = [
       currentSidebarLibFilter,
       (state.favorites || []).length,
+      (state.offlineVault || []).length,
       getSidebarPinnedTracks().map(t => t.id || t.title).join(','),
       (state.playlists || []).map(p => `${p.id}:${p.name}:${(p.tracks || []).length}:${p.cover || ''}`).join('|'),
       (typeof getSavedAlbums === 'function' ? getSavedAlbums() : []).map(a => a.id || a.title).join(','),
@@ -30519,6 +30846,21 @@ function bindCoverHoldZoom(wrapEl) {
       `;
       likedRow.addEventListener('click', () => switchView('favorites'));
       frag.appendChild(likedRow);
+
+      const vaultRow = document.createElement('div');
+      vaultRow.className = 'sb-lib-row sl-vault-row' + (state.currentView === 'offline-vault' ? ' active' : '');
+      vaultRow.dataset.viewTarget = 'offline-vault';
+      if (!forceAnim) vaultRow.classList.add('no-sb-anim');
+      const vaultCount = (state.offlineVault || []).length;
+      vaultRow.innerHTML = `
+        <div class="sb-lib-cover sl-vault-grad"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v11"></path><polyline points="7.5 9.5 12 14 16.5 9.5"></polyline><path d="M4 15v3a3 3 0 0 0 3 3h10a3 3 0 0 0 3-3v-3"></path></svg></div>
+        <div class="sb-lib-info">
+          <span class="sb-lib-title">Offline Vault</span>
+          <span class="sb-lib-sub">${pinSvg}<span>${vaultCount} ${vaultCount === 1 ? 'track' : 'tracks'}</span></span>
+        </div>
+      `;
+      vaultRow.addEventListener('click', () => switchView('offline-vault'));
+      frag.appendChild(vaultRow);
 
       const pinnedTracks = getSidebarPinnedTracks();
       if (pinnedTracks.length > 0) {

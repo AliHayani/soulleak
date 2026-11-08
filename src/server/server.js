@@ -9159,6 +9159,7 @@ async function requestHandler(req, res) {
             platform: meta.platform || 'youtube',
             fileSize: stat.size,
             lastPlayed: meta.lastPlayed || stat.mtimeMs,
+            cachedAt: stat.birthtimeMs || stat.mtimeMs,
             analysis: meta.analysis || null
           });
         }

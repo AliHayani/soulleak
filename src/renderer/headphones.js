@@ -67,6 +67,8 @@
       toggle.classList.toggle('active', on);
       card.classList.toggle('is-on', on);
       current.textContent = p ? `${p.name} · ${KIND[p.kind] || 'Headphones'}${on ? '' : ' · off'}` : HINT;
+      const pill = document.getElementById('hp-eq-remaster-pill');
+      if (pill) pill.hidden = on;
     }
 
     function showResults(list, note) {
