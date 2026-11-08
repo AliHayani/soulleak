@@ -736,11 +736,15 @@
       if (this.graphInitialized) this._applyRemaster(false);
     }
 
+    // Three clearly different characters (the first version moved each band ~1.5 dB and they all sounded alike):
+    //   Warm      - full, round low end, smooth darker top, gentle width
+    //   Crisp HD  - clean low-mids, forward vocals, sparkling restored highs, wide stage
+    //   Max Punch - deep sub and kick, parallel compression for drive, bright enough to cut through
     _remasterParams(mode) {
       return ({
-        warm:  { trim: -1.0, sub: 3.0, mud: -2.0, pres: 1.2, exc: 0.10, air: 1.5, width: 1.0 },
-        crisp: { trim: -1.5, sub: 3.8, mud: -2.8, pres: 2.2, exc: 0.18, air: 3.0, width: 1.8 },
-        punch: { trim: -2.0, sub: 5.5, mud: -3.5, pres: 2.8, exc: 0.22, air: 3.5, width: 2.2 },
+        warm:  { trim: -3.0, sub: 2.0, low: 5.5, mud: -1.0, pres: -0.5, tilt: -2.5, comp: 0.0, exc: 0.05, air: 0.0, width: 1.5 },
+        crisp: { trim: -1.0, sub: 2.5, low: 0.0, mud: -4.0, pres: 3.5, tilt: 1.5, comp: 0.0, exc: 0.30, air: 5.0, width: 3.5 },
+        punch: { trim: -3.5, sub: 6.5, low: 2.5, mud: -4.0, pres: 2.5, tilt: 0.5, comp: 0.7, exc: 0.15, air: 2.5, width: 2.0 },
       })[mode] || null;
     }
 
@@ -752,25 +756,36 @@
       const biquad = (type, f, q, g) => { const b = N(ctx.createBiquadFilter()); b.type = type; b.frequency.value = f; if (q !== undefined) b.Q.value = q; if (g !== undefined) b.gain.value = g; return b; };
       const input = gain(1);
       const trim = gain(1);
-      const sub = biquad('peaking', 58, 1.1, 0);
-      const mud = biquad('peaking', 290, 1.4, 0);
-      const pres = biquad('peaking', 3200, 1.2, 0);
-      input.connect(trim); trim.connect(sub); sub.connect(mud); mud.connect(pres);
-      // Exciter: the band above 5.5 kHz through a soft saturator (odd + even harmonics), blended back in.
+      const sub = biquad('peaking', 58, 1.1, 0);      // sub / kick punch
+      const low = biquad('lowshelf', 140, undefined, 0); // body and warmth
+      const mud = biquad('peaking', 290, 1.4, 0);     // boxy headset veil
+      const pres = biquad('peaking', 3200, 1.2, 0);   // vocal clarity
+      const tilt = biquad('highshelf', 7000, undefined, 0); // darker (warm) or brighter (crisp) top
+      input.connect(trim); trim.connect(sub); sub.connect(low); low.connect(mud); mud.connect(pres); pres.connect(tilt);
+      // Parallel ("New York") compression: a squashed copy under the original adds drive without killing peaks.
+      const glue = gain(1);
+      tilt.connect(glue);
+      const comp = N(ctx.createDynamicsCompressor());
+      comp.threshold.value = -32; comp.knee.value = 8; comp.ratio.value = 5; comp.attack.value = 0.008; comp.release.value = 0.14;
+      const compWet = gain(0);
+      tilt.connect(comp); comp.connect(compWet); compWet.connect(glue);
+      // Exciter: the band above 5.5 kHz, driven into a saturator so it really makes new harmonics (the quiet band
+      // barely touched the curve before), cleaned of its low products, blended back in.
       const sum = gain(1);
-      pres.connect(sum);
+      glue.connect(sum);
       const excHp = biquad('highpass', 5500, 0.707);
+      const excDrive = gain(8);
       const exciter = N(ctx.createWaveShaper());
       exciter.oversample = '4x';
       const n = 2048, curve = new Float32Array(n);
       for (let i = 0; i < n; i++) {
         const x = (i * 2) / (n - 1) - 1;
-        curve[i] = Math.tanh(3 * x) / Math.tanh(3) + 0.3 * x * x;
+        curve[i] = Math.tanh(2.5 * x) / Math.tanh(2.5) + 0.25 * x * x;
       }
       exciter.curve = curve;
-      const excClean = biquad('highpass', 4000, 0.707); // drops the DC and low products the even harmonics make
+      const excClean = biquad('highpass', 4500, 0.707);
       const excWet = gain(0);
-      pres.connect(excHp); excHp.connect(exciter); exciter.connect(excClean); excClean.connect(excWet); excWet.connect(sum);
+      glue.connect(excHp); excHp.connect(excDrive); excDrive.connect(exciter); exciter.connect(excClean); excClean.connect(excWet); excWet.connect(sum);
       const air = biquad('highshelf', 11000, undefined, 0);
       sum.connect(air);
       // Widener: side above 300 Hz up, side below 120 Hz removed (bass stays mono).
@@ -793,7 +808,7 @@
       sideOut.connect(merge, 0, 0); sideNeg.connect(merge, 0, 1);
       const output = gain(1);
       merge.connect(output);
-      return { input, output, nodes, params: { trim, sub, mud, pres, excWet, air, sideBoost } };
+      return { input, output, nodes, params: { trim, sub, low, mud, pres, tilt, compWet, excWet, air, sideBoost } };
     }
 
     _applyRemaster(instant) {
@@ -818,9 +833,12 @@
         const q = c.params;
         ramp(q.trim.gain, Math.pow(10, p.trim / 20));
         ramp(q.sub.gain, p.sub);
+        ramp(q.low.gain, p.low);
         ramp(q.mud.gain, p.mud);
         ramp(q.pres.gain, p.pres);
-        ramp(q.excWet.gain, p.exc);
+        ramp(q.tilt.gain, p.tilt);
+        ramp(q.compWet.gain, p.comp * 2.5);
+        ramp(q.excWet.gain, p.exc / 4);
         ramp(q.air.gain, p.air);
         ramp(q.sideBoost.gain, Math.pow(10, p.width / 20) - 1);
         ramp(c.wet.gain, 1);
