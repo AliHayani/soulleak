@@ -436,6 +436,7 @@
           <span class="slc-title">Soulleak Cloud</span>
         </div>
         <p class="slc-note">Sign in to keep your playlists, liked songs, history and rank on every PC. Nothing on this PC is removed. No email needed: just a username and a password.</p>
+        ${up ? '' : '<p class="slc-callout"><b>New to Soulleak Cloud?</b> Even if you already use Soulleak, start with <button type="button" class="slc-link" data-slc-mode="signup">Create account</button>: your playlists, liked songs and rank on this PC are uploaded to it. Use <b>Sign in</b> on your other PCs.</p>'}
         <div class="slc-tabs" role="tablist">
           <button type="button" role="tab" class="slc-tab ${up ? '' : 'active'}" data-slc-mode="signin" aria-selected="${!up}">Sign in</button>
           <button type="button" role="tab" class="slc-tab ${up ? 'active' : ''}" data-slc-mode="signup" aria-selected="${up}">Create account</button>
