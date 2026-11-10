@@ -4849,3 +4849,60 @@ body:not(.sidebar-expanded) .sl-sb-footer { display: none; }
 .sl-support-pill:active { transform: scale(0.97); }
 .sl-support-pill:focus-visible { outline: 2px solid #8b5cf6; outline-offset: 2px; }
 .sl-support-pill-lg { height: 32px; font-size: 12px; }
+
+
+/* ---- Soulleak Cloud account card (cloud-sync.js) ---- */
+.sl-cloud-card {
+  margin: 18px 0 8px;
+  padding: 18px 20px 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(139, 92, 246, 0.18);
+  background: linear-gradient(160deg, #13101f 0%, #0c0c12 55%, #0a0910 100%);
+  color: #e9e5f5;
+}
+.sl-cloud-card[hidden] { display: none; }
+.slc-head { display: flex; align-items: center; gap: 9px; margin-bottom: 10px; }
+.slc-logo { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 9px; color: #fff; background: linear-gradient(135deg, #8b5cf6, #6d28d9); }
+.slc-title { font: 700 15px/1.2 var(--sl-display, inherit); letter-spacing: 0.01em; }
+.slc-note { margin: 0 0 12px; font-size: 12.5px; line-height: 1.45; color: rgba(233, 229, 245, 0.6); }
+.slc-user { display: flex; align-items: center; gap: 12px; margin: 4px 0 12px; }
+.slc-avatar { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 50%; overflow: hidden; flex: none; font: 700 18px/1 var(--sl-display, inherit); color: #fff; background: linear-gradient(135deg, #a855f7, #6d28d9); box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.35); }
+.slc-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.slc-who { display: flex; flex-direction: column; min-width: 0; }
+.slc-name { font-weight: 700; font-size: 15px; }
+.slc-email { font-size: 12.5px; color: rgba(233, 229, 245, 0.55); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.slc-status { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; font-size: 12.5px; color: rgba(233, 229, 245, 0.75); }
+.slc-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: #6b7280; }
+.slc-status.is-ok .slc-dot { background: #34d399; box-shadow: 0 0 8px rgba(52, 211, 153, 0.7); }
+.slc-status.is-syncing .slc-dot { background: #a855f7; animation: slcPulse 1s ease-in-out infinite alternate; }
+.slc-status.is-offline .slc-dot, .slc-status.is-paused .slc-dot { background: #fbbf24; }
+.slc-status.is-error .slc-dot { background: #f87171; }
+.slc-status.is-error { color: #fca5a5; }
+@keyframes slcPulse { from { opacity: 0.35; transform: scale(0.85); } to { opacity: 1; transform: scale(1.1); } }
+.slc-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+.slc-btn {
+  height: 36px; padding: 0 16px; border-radius: 999px; cursor: pointer;
+  border: 1px solid rgba(139, 92, 246, 0.28); background: #0c0c12; color: #e9e5f5;
+  font: 600 13px/1 var(--sl-display, inherit);
+  transition: box-shadow 0.18s ease, border-color 0.18s ease, background 0.18s ease, opacity 0.18s ease;
+}
+.slc-btn:hover:not([disabled]) { border-color: rgba(139, 92, 246, 0.6); box-shadow: 0 0 14px rgba(139, 92, 246, 0.35); }
+.slc-btn[disabled] { opacity: 0.55; cursor: default; }
+.slc-primary { border-color: transparent; background: linear-gradient(135deg, #8b5cf6, #7c3aed); color: #fff; }
+.slc-primary:hover:not([disabled]) { box-shadow: 0 0 18px rgba(139, 92, 246, 0.6); }
+.slc-tabs { display: flex; gap: 4px; padding: 4px; margin-bottom: 12px; border-radius: 12px; background: rgba(255, 255, 255, 0.04); }
+.slc-tab { flex: 1; height: 32px; border: 0; border-radius: 9px; background: transparent; color: rgba(233, 229, 245, 0.6); font: 600 13px/1 var(--sl-display, inherit); cursor: pointer; }
+.slc-tab.active { background: rgba(139, 92, 246, 0.22); color: #fff; }
+.slc-form { display: flex; flex-direction: column; gap: 10px; }
+.slc-field { display: flex; flex-direction: column; gap: 5px; font-size: 12px; color: rgba(233, 229, 245, 0.65); }
+.slc-field input {
+  height: 38px; padding: 0 12px; border-radius: 10px; outline: none;
+  border: 1px solid rgba(139, 92, 246, 0.18); background: #08080d; color: #fff; font-size: 14px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.slc-field input:focus { border-color: #8b5cf6; box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.2); }
+.slc-error { margin: 0; padding: 8px 10px; border-radius: 9px; font-size: 12.5px; color: #fecaca; background: rgba(248, 113, 113, 0.1); border: 1px solid rgba(248, 113, 113, 0.25); }
+.slc-error[hidden] { display: none; }
+.slc-submit { margin-top: 2px; height: 40px; }
+.slc-hint { margin: -2px 0 0; font-size: 11.5px; color: rgba(233, 229, 245, 0.5); }
+.sl-offline-backup-title { display: block; margin-top: 22px; }

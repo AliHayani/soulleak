@@ -257,6 +257,9 @@ function runGUI() {
   let latestStorageSnapshot = null;
   let storageDirty = false;
 
+  // Soulleak Cloud accounts + library sync (cloud.js). Registers its IPC; never blocks startup.
+  try { require('./cloud').initCloud(); } catch (e) { console.warn('[cloud] init failed:', e.message); }
+
   ipcMain.on('storage-get-all-sync', (event) => {
     event.returnValue = latestStorageSnapshot || readStorageDiskSync();
   });

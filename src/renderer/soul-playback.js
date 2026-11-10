@@ -642,5 +642,21 @@
     // For a yearly recap later: monthly records and a sum over a year.
     months: () => new Map(months),
     year: yearBucket,
+    // Soulleak Cloud (cloud-sync.js): all month records as plain data, and taking in another PC's months. A month
+    // keeps whichever side listened more (the same listening is never counted twice).
+    exportMonths: () => Array.from(months.values()).map((b) => JSON.parse(JSON.stringify(b))),
+    mergeMonths: (rows) => {
+      let changed = false;
+      (Array.isArray(rows) ? rows : []).forEach((r) => {
+        if (!r || !r.month) return;
+        const cur = months.get(r.month);
+        if (cur && (cur.totalSeconds || 0) >= (r.totalSeconds || 0)) return;
+        months.set(r.month, Object.assign(emptyBucket(r.month), JSON.parse(JSON.stringify(r))));
+        dirty.add(r.month);
+        changed = true;
+      });
+      if (changed) flush();
+      return changed;
+    },
   };
 })();

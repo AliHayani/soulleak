@@ -19980,6 +19980,67 @@ function bindCoverHoldZoom(wrapEl) {
     });
   }
 
+  // Soulleak Cloud (cloud-sync.js): what is synced, and putting a merged library back in place without a reload.
+  if (window.SoulleakCloud) {
+    let cloudAppVersion = '';
+    try { if (window.electronAPI && window.electronAPI.getAppVersion) window.electronAPI.getAppVersion().then((v) => { cloudAppVersion = v || ''; }).catch(() => {}); } catch (_) {}
+    window.SoulleakCloud.attach({
+      // Listening counters must be loaded before they are merged (else seconds would be counted twice).
+      ready: () => !!statsDb,
+      flush: () => { flushStats(); if (window.SoulPlayback) window.SoulPlayback.flush(); },
+      toast: (msg, type) => showToast(msg, type),
+      version: () => cloudAppVersion,
+      trackKey: (t) => (typeof getTrackCanonicalId === 'function' && getTrackCanonicalId(t)) || (t && t.id) || '',
+      library: () => ({
+        playlists: state.playlists || [],
+        favorites: state.favorites || [],
+        history: state.history || [],
+        stats: Array.from(statsCounters.entries()).map(([key, c]) => ({ key, seconds: c.seconds, label: c.label || '' })),
+        playback: window.SoulPlayback && window.SoulPlayback.exportMonths ? window.SoulPlayback.exportMonths() : [],
+      }),
+      apply: (next) => {
+        if (next.playlists) {
+          state.playlists = next.playlists;
+          localStorage.setItem('devsize_playlists', JSON.stringify(state.playlists));
+          try { renderPlaylistsList(); } catch (_) {}
+          try { renderSidebarLibraryFeed(); } catch (_) {}
+          if (state.currentView === 'playlist-detail' && state.currentPlaylistId) {
+            const pl = state.playlists.find((p) => p.id === state.currentPlaylistId);
+            if (pl) { state.currentPlaylist = pl; renderTracks(el.playlistTracksList, playlistShownTracks(pl), 'playlist'); }
+            else switchView('discover');
+          }
+        }
+        if (next.favorites) {
+          state.favorites = next.favorites;
+          localStorage.setItem('devsize_favorites', JSON.stringify(state.favorites));
+          try { updateFavoritesBadge(); } catch (_) {}
+          if (state.currentView === 'favorites') renderFavoritesView();
+        }
+        if (next.history) {
+          state.history = next.history;
+          localStorage.setItem('devsize_history', JSON.stringify(state.history));
+          try { updateHistoryBadge(); } catch (_) {}
+          if (state.currentView === 'history') renderHistoryView();
+          if (state.currentView === 'discover') { try { renderHomeHistory(); } catch (_) {} }
+        }
+        if (next.stats) {
+          next.stats.forEach((r) => {
+            if (!r || !r.key) return;
+            const cur = statsCounters.get(r.key);
+            if (!cur || cur.seconds < (r.seconds || 0)) {
+              statsCounters.set(r.key, { seconds: r.seconds || 0, label: r.label || (cur && cur.label) || '' });
+              statsDirty.add(r.key);
+            }
+          });
+          flushStats();
+          try { renderListenLevel(); renderBadges(false); } catch (_) {}
+        }
+        if (next.playback && window.SoulPlayback && window.SoulPlayback.mergeMonths) window.SoulPlayback.mergeMonths(next.playback);
+        if (next.prefs) Object.entries(next.prefs).forEach(([k, v]) => { try { localStorage.setItem(k, v); } catch (_) {} });
+      },
+    });
+  }
+
   // Soul Playback (soul-playback.js): monthly recap. It gets what it needs from the app through this adapter.
   if (window.SoulPlayback) {
     const httpArt = (u) => (typeof u === 'string' && /^https?:\/\//i.test(u) ? u : '');
