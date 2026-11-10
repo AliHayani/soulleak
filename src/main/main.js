@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog, ipcMain, screen, shell, Tray, Menu, nativeImage, globalShortcut, powerMonitor, session, safeStorage } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain, screen, shell, Tray, Menu, nativeImage, globalShortcut, powerMonitor, session, safeStorage, clipboard } = require('electron');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
@@ -560,6 +560,24 @@ function runGUI() {
 
     ipcMain.on('window-close', () => {
       if (mainWindow && !mainWindow.isDestroyed()) mainWindow.close();
+    });
+
+    // Support button: opens the creator's Discord profile (DM button included). In the Discord app when it is
+    // installed (discord:// link, no browser tab), otherwise on discord.com in the browser. The username is copied
+    // too, for people who use Discord in a browser. Fixed address only: the page can't open anything else this way.
+    const CREATOR_DISCORD_ID = '804746614819389441';
+    const CREATOR_DISCORD_NAME = 'soulliikaa';
+    ipcMain.removeHandler('open-creator-discord');
+    ipcMain.handle('open-creator-discord', async () => {
+      try { clipboard.writeText(CREATOR_DISCORD_NAME); } catch (_) {}
+      const web = `https://discord.com/users/${CREATOR_DISCORD_ID}`;
+      let hasApp = false;
+      try { hasApp = !!app.getApplicationNameForProtocol('discord://'); } catch (_) {}
+      if (hasApp) {
+        try { await shell.openExternal(`discord://-/users/${CREATOR_DISCORD_ID}`); return { ok: true, app: true, name: CREATOR_DISCORD_NAME }; } catch (_) {}
+      }
+      try { await shell.openExternal(web); return { ok: true, app: false, name: CREATOR_DISCORD_NAME }; } catch (_) {}
+      return { ok: false, app: false, name: CREATOR_DISCORD_NAME };
     });
 
     ipcMain.on('open-external', (e, u) => {

@@ -29860,6 +29860,29 @@ function bindCoverHoldZoom(wrapEl) {
 
 
 
+  // Support / DM the creator on Discord (sidebar footer and Settings > About).
+  async function openCreatorDiscord() {
+    const name = 'soulliikaa';
+    let res = null;
+    try {
+      if (window.electronAPI && window.electronAPI.openCreatorDiscord) res = await window.electronAPI.openCreatorDiscord();
+    } catch (_) {}
+    if (!res) {
+      try { await navigator.clipboard.writeText(name); } catch (_) {}
+      try { window.open('https://discord.com/users/804746614819389441', '_blank'); } catch (_) {}
+      res = { ok: true, app: false };
+    }
+    if (res.ok === false) showToast(`Couldn't open Discord. @${name} is copied to your clipboard`, 'info');
+    else showToast(res.app
+      ? `Opening Discord profile... (@${name} copied to clipboard)`
+      : `Opening Discord in your browser... (@${name} copied to clipboard)`, 'success');
+  }
+  document.querySelectorAll('[data-sl-support]').forEach((b) => b.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    openCreatorDiscord();
+  }));
+
   const btnCopyDiagnostics = document.getElementById('btn-copy-diagnostics');
   const btnOpenShortcuts = document.getElementById('btn-open-shortcuts');
   const shortcutsModal = document.getElementById('shortcuts-modal');

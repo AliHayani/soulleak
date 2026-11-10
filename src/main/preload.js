@@ -106,6 +106,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   importPlugins: () => ipcRenderer.invoke('plugins-import'),
   getAppCss: () => ipcRenderer.invoke('read-app-css'),
   openExternal: (u) => ipcRenderer.send('open-external', u),
+  openCreatorDiscord: () => ipcRenderer.invoke('open-creator-discord'),
   logError: (level, message, stack) => ipcRenderer.send('log-error', { level, message, stack }),
   openLogsFolder: () => ipcRenderer.send('open-logs-folder'),
   getDiagnostics: () => ipcRenderer.invoke('get-diagnostics'),

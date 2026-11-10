@@ -4815,3 +4815,37 @@ body:not(.theme-dark) .sl-offline-only-pill.active { color: #047857 !important; 
 body:not(.theme-dark) .sl-norm-badge { color: #047857; }
 body:not(.theme-dark) .sl-norm-badge.is-trim { color: #b45309; }
 .sl-wear-row input { accent-color: #f59e0b; }
+
+
+/* ---- Support / DM the creator (sidebar footer + Settings > About) ---- */
+/* The sidebar footer: one full-width row under the library list. */
+.sl-sb-footer { flex: none; padding: 8px 2px 2px; margin-top: 6px; border-top: 1px solid rgba(139, 92, 246, 0.12); }
+body:not(.sidebar-expanded) .sl-sb-footer { display: none; }
+.sl-sb-footer .sl-support-row { width: 100%; height: 38px; border-radius: 12px; padding: 0 12px; }
+.sl-support-hint { margin-left: auto; font-weight: 500; font-size: 11.5px; color: rgba(196, 181, 253, 0.55); transition: color 0.18s ease; }
+.sl-support-row:hover .sl-support-hint { color: rgba(255, 255, 255, 0.75); }
+.sl-support-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 34px;
+  padding: 0 13px 0 11px;
+  border-radius: 999px;
+  border: 1px solid rgba(139, 92, 246, 0.18);
+  background: #0c0c12;
+  color: #c4b5fd;
+  font: 600 13px/1 var(--sl-display, inherit);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, color 0.18s ease, transform 0.12s ease;
+}
+.sl-support-pill svg { flex: 0 0 auto; color: #8b5cf6; transition: color 0.18s ease; }
+.sl-support-pill:hover {
+  color: #fff;
+  border-color: rgba(139, 92, 246, 0.6);
+  box-shadow: 0 0 0 1px rgba(88, 101, 242, 0.35), 0 0 16px rgba(88, 101, 242, 0.45), 0 0 28px rgba(139, 92, 246, 0.25);
+}
+.sl-support-pill:hover svg { color: #5865f2; }
+.sl-support-pill:active { transform: scale(0.97); }
+.sl-support-pill:focus-visible { outline: 2px solid #8b5cf6; outline-offset: 2px; }
+.sl-support-pill-lg { height: 32px; font-size: 12px; }
