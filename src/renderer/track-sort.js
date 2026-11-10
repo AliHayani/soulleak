@@ -152,6 +152,8 @@ function enableTrackSort(containerOrOpts, onReorderCb) {
     startScrollTop = scrollEl ? scrollEl.scrollTop : 0;
 
     container.dataset.isDraggingTrack = '1';
+    // Long lists only render the rows on screen; don't swap them out mid-drag.
+    container._isDraggingReorder = true;
     container.style.userSelect = 'none';
     draggedItem.classList.add('is-dragging');
 
@@ -233,6 +235,7 @@ function enableTrackSort(containerOrOpts, onReorderCb) {
     window.removeEventListener('pointercancel', onPointerUp);
 
     delete container.dataset.isDraggingTrack;
+    container._isDraggingReorder = false;
 
     if (!draggedItem) return;
 
@@ -275,6 +278,17 @@ function enableTrackSort(containerOrOpts, onReorderCb) {
 
         if (fromIdx !== -1 && toIdx !== -1 && fromIdx !== toIdx) {
           const currentChildren = Array.from(container.querySelectorAll('.track-row'));
+          // Long lists only render the rows on screen, so a row's place among the rendered rows is not its place in
+          // the list. Each row knows its real position (data-track-index); report those, plus the two songs.
+          const posOf = (el, fallback) => {
+            const n = el ? parseInt(el.dataset.trackIndex, 10) : NaN;
+            return Number.isFinite(n) ? n : fallback;
+          };
+          const base = posOf(currentChildren[0], 0);
+          const target = currentChildren[toIdx];
+          const realFrom = posOf(item, base + fromIdx);
+          const realTo = posOf(target, base + toIdx);
+          const detail = { fromTrack: item._trackData, toTrack: target && target._trackData };
           if (toIdx > fromIdx) {
             const targetEl = currentChildren[toIdx];
             if (targetEl) {
@@ -287,14 +301,16 @@ function enableTrackSort(containerOrOpts, onReorderCb) {
             }
           }
 
+          // Renumber the rows (playlist rows use .track-num-text; this used to look only for .track-row-index,
+          // so the old numbers stayed and came out shuffled).
           container.querySelectorAll('.track-row').forEach((r, i) => {
-            r.dataset.trackIndex = String(i);
-            const num = r.querySelector('.track-row-index');
-            if (num) num.textContent = String(i + 1);
+            r.dataset.trackIndex = String(base + i);
+            const num = r.querySelector('.track-num-text, .track-row-index');
+            if (num) num.textContent = String(base + i + 1);
           });
 
           if (typeof onReorder === 'function') {
-            onReorder(fromIdx, toIdx);
+            onReorder(realFrom, realTo, detail);
           }
         }
 

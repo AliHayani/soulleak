@@ -224,14 +224,27 @@ if (!fs.existsSync(LYRICS_DIR)) fs.mkdirSync(LYRICS_DIR, { recursive: true });
 if (!fs.existsSync(THUMBNAILS_DIR)) fs.mkdirSync(THUMBNAILS_DIR, { recursive: true });
 if (!fs.existsSync(LIBRARY_DIR)) fs.mkdirSync(LIBRARY_DIR, { recursive: true });
 
-let trackMetadataIndex = {};
-try {
-  if (fs.existsSync(METADATA_PATH)) {
-    trackMetadataIndex = JSON.parse(fs.readFileSync(METADATA_PATH, 'utf-8'));
-  }
-} catch (e) {
-  trackMetadataIndex = {};
+// The offline index (metadata.json) and the local library index (library.json) are written atomically (temp file,
+// then rename), so a crash or power cut mid-save can't leave half a file. A file that still can't be read is kept
+// as <name>.corrupt-<time>.json instead of being silently replaced by an empty index on the next save.
+function writeJsonAtomic(file, obj) {
+  const tmp = file + '.tmp';
+  fs.writeFileSync(tmp, JSON.stringify(obj, null, 2), 'utf-8');
+  fs.renameSync(tmp, file);
 }
+function readJsonIndex(file) {
+  if (!fs.existsSync(file)) return {};
+  try {
+    const v = JSON.parse(fs.readFileSync(file, 'utf-8'));
+    return v && typeof v === 'object' && !Array.isArray(v) ? v : {};
+  } catch (e) {
+    try { fs.renameSync(file, file.replace(/.json$/i, '') + '.corrupt-' + Date.now() + '.json'); } catch (_) {}
+    console.warn('[soulleak] ' + path.basename(file) + ' was damaged and has been set aside:', e.message);
+    return {};
+  }
+}
+
+let trackMetadataIndex = readJsonIndex(METADATA_PATH);
 
 function saveTrackMetadata(cleanId, meta) {
   if (!cleanId) return;
@@ -241,22 +254,15 @@ function saveTrackMetadata(cleanId, meta) {
     lastPlayed: Date.now()
   };
   try {
-    fs.writeFileSync(METADATA_PATH, JSON.stringify(trackMetadataIndex, null, 2), 'utf-8');
+    writeJsonAtomic(METADATA_PATH, trackMetadataIndex);
   } catch (e) {}
 }
 
-let libraryIndex = {};
-try {
-  if (fs.existsSync(LIBRARY_PATH)) {
-    libraryIndex = JSON.parse(fs.readFileSync(LIBRARY_PATH, 'utf-8'));
-  }
-} catch (e) {
-  libraryIndex = {};
-}
+let libraryIndex = readJsonIndex(LIBRARY_PATH);
 
 function saveLibraryIndex() {
   try {
-    fs.writeFileSync(LIBRARY_PATH, JSON.stringify(libraryIndex, null, 2), 'utf-8');
+    writeJsonAtomic(LIBRARY_PATH, libraryIndex);
   } catch (e) {}
 }
 
@@ -423,6 +429,41 @@ async function pruneDiskCache() {
 }
 
 pruneDiskCache();
+
+// Offline files saved before 1.1.20 could be cut off (a server ended the download early, e.g. YouTube's fast links
+// serve only ~1 MB) and then played as a song that stops after a few seconds. A few seconds after start, every cached
+// song is checked with the same rule new downloads now use: no audio worth keeping is under ~32 kbit/s, so a file far
+// smaller than that for the song's length is cut off. Those files and their offline entries are removed, and the song
+// simply streams (and caches again, whole) the next time it plays. Songs with no known length are left alone.
+const TRUNCATED_MIN_BYTES_PER_SEC = 4000;
+async function sweepTruncatedCache() {
+  let removed = 0;
+  let checked = 0;
+  try {
+    const files = await fs.promises.readdir(CACHE_DIR);
+    for (const file of files) {
+      if (file.includes('.temp.') || !/\.(m4a|webm|mp3|opus|ogg|aac|flac|wav)$/i.test(file)) continue;
+      const id = file.replace(/\.[^.]+$/, '');
+      const meta = trackMetadataIndex[id];
+      const dur = Number(meta && meta.duration) || 0;
+      if (!(dur > 60)) continue;
+      checked++;
+      const fullPath = path.join(CACHE_DIR, file);
+      let size = 0;
+      try { size = (await fs.promises.stat(fullPath)).size; } catch (_) { continue; }
+      if (size >= dur * TRUNCATED_MIN_BYTES_PER_SEC) continue;
+      try {
+        await fs.promises.unlink(fullPath);
+        delete trackMetadataIndex[id];
+        removed++;
+        logger.log('info', `Removed a cut-off offline file: "${(meta && meta.title) || id}" (${Math.round(size / 1024)} KB for ${Math.round(dur)} s)`);
+      } catch (_) {}
+    }
+    if (removed) { try { writeJsonAtomic(METADATA_PATH, trackMetadataIndex); } catch (_) {} }
+  } catch (_) {}
+  return { checked, removed };
+}
+setTimeout(() => { sweepTruncatedCache().catch(() => {}); }, 8000).unref();
 
 function parseDurationSeconds(str) {
   if (!str) return 0;
@@ -866,7 +907,7 @@ async function resolveScTranscodingServer(trackObj, cid) {
   if (!chosen || !chosen.url || chosen.snipped === true) return null;
   const sep = chosen.url.includes('?') ? '&' : '?';
   const auth = trackObj.track_authorization ? `&track_authorization=${encodeURIComponent(trackObj.track_authorization)}` : '';
-  const res = await fetch(`${chosen.url}${sep}client_id=${cid}${auth}`, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+  const res = await fetch(`${chosen.url}${sep}client_id=${cid}${auth}`, { headers: { 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(8000) });
   if (!res.ok) return null;
   const j = await res.json();
   const u = (j && j.url) ? j.url : null;
@@ -875,35 +916,66 @@ async function resolveScTranscodingServer(trackObj, cid) {
   return u;
 }
 
+// SoundCloud's public web client_id. SoundCloud rotates it every so often; a lookup that gets 401/403 fetches a fresh
+// one from soundcloud.com's own scripts and retries. The last good one is saved to disk, so a new launch doesn't
+// re-scrape soundcloud.com before its first SoundCloud song (that used to delay the first click of every session).
+const SC_CLIENT_ID_FILE = path.join(DATA_DIR, 'soundcloud-client-id.json');
 let serverScClientId = 'tHVbSbDP4TaoMbPppngv6Tdry83vNbMQ';
 let serverScClientIdTs = 0;
+try {
+  const saved = JSON.parse(fs.readFileSync(SC_CLIENT_ID_FILE, 'utf8'));
+  if (saved && /^[a-zA-Z0-9]{32}$/.test(saved.id || '')) {
+    serverScClientId = saved.id;
+    serverScClientIdTs = Number(saved.ts) || 0;
+  }
+} catch (_) {}
 scClientCache.set('clientId', serverScClientId);
 boundMap(scClientCache, 35);
+// A saved id is trusted for 12 h (a 401 still replaces it at once); the built-in one only until the first lookup.
+const SC_CLIENT_ID_TTL_MS = 12 * 60 * 60 * 1000;
+let scClientIdRefreshing = null;
 
 async function refreshSoundCloudClientId(force = false) {
-  if (!force && serverScClientId && (Date.now() - serverScClientIdTs < 30 * 60 * 1000)) {
+  if (!force && serverScClientId && (Date.now() - serverScClientIdTs < SC_CLIENT_ID_TTL_MS)) {
     return serverScClientId;
   }
-  try {
-    const html = await fetch('https://soundcloud.com', {
-      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/131.0.0.0 Safari/537.36' }
-    }).then(r => r.text());
-    const scripts = [...html.matchAll(/src="(https:\/\/a-v2\.sndcdn\.com\/assets\/[^"]+\.js)"/g)].map(m => m[1]);
-    for (let i = scripts.length - 1; i >= Math.max(0, scripts.length - 5); i--) {
-      try {
-        const js = await fetch(scripts[i]).then(r => r.text());
-        const m = js.match(/client_id\s*[:=]\s*["']([a-zA-Z0-9]{32})["']/);
-        if (m && m[1]) {
-          serverScClientId = m[1];
-          serverScClientIdTs = Date.now();
-          scClientCache.set('clientId', serverScClientId);
-          boundMap(scClientCache, 35);
-          return serverScClientId;
-        }
-      } catch (_) {}
+  // Several lookups hitting a 401 at once (a click plus the next-2 pre-resolve) share one refresh.
+  if (scClientIdRefreshing) return scClientIdRefreshing;
+  scClientIdRefreshing = (async () => {
+    try {
+      const html = await fetch('https://soundcloud.com', {
+        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/131.0.0.0 Safari/537.36' },
+        signal: AbortSignal.timeout(8000)
+      }).then(r => r.text());
+      const scripts = [...html.matchAll(/src="(https:\/\/a-v2\.sndcdn\.com\/assets\/[^"]+\.js)"/g)].map(m => m[1]);
+      for (let i = scripts.length - 1; i >= Math.max(0, scripts.length - 6); i--) {
+        try {
+          const js = await fetch(scripts[i], { signal: AbortSignal.timeout(8000) }).then(r => r.text());
+          const m = js.match(/client_id\s*[:=]\s*["']([a-zA-Z0-9]{32})["']/) || js.match(/[?&]client_id=([a-zA-Z0-9]{32})\b/);
+          if (m && m[1]) {
+            serverScClientId = m[1];
+            serverScClientIdTs = Date.now();
+            scClientCache.set('clientId', serverScClientId);
+            boundMap(scClientCache, 35);
+            try {
+              const tmp = SC_CLIENT_ID_FILE + '.tmp';
+              fs.writeFileSync(tmp, JSON.stringify({ id: serverScClientId, ts: serverScClientIdTs }));
+              fs.renameSync(tmp, SC_CLIENT_ID_FILE);
+            } catch (_) {}
+            logger.log('info', 'SoundCloud client_id refreshed');
+            return serverScClientId;
+          }
+        } catch (_) {}
+      }
+      logger.log('warn', 'SoundCloud client_id refresh found no id; keeping the old one');
+    } catch (e) {
+      logger.log('warn', 'SoundCloud client_id refresh failed: ' + (e && e.message ? e.message : e));
     }
-  } catch (_) {}
-  return serverScClientId;
+    // Don't hammer soundcloud.com while it is unreachable: try again in 2 minutes at the earliest.
+    if (!force) serverScClientIdTs = Date.now() - SC_CLIENT_ID_TTL_MS + 2 * 60 * 1000;
+    return serverScClientId;
+  })();
+  try { return await scClientIdRefreshing; } finally { scClientIdRefreshing = null; }
 }
 
 const refreshServerScClientId = () => refreshSoundCloudClientId(true);
@@ -999,7 +1071,7 @@ async function fetchDirectSoundCloudStreamServer(scUrlOrId, queryFallback, match
         const apiUrl = idMatch && idMatch[1]
           ? `https://api-v2.soundcloud.com/tracks/${idMatch[1]}?client_id=${cid}`
           : `https://api-v2.soundcloud.com/resolve?url=${encodeURIComponent(String(norm).split('?')[0])}&client_id=${cid}`;
-        const r = await fetch(apiUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+        const r = await fetch(apiUrl, { headers: { 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(8000) });
         if (r.status === 401 || r.status === 403) { cid = await refreshServerScClientId(); continue; }
         if (r.ok) {
           const tObj = await r.json();
@@ -1010,7 +1082,7 @@ async function fetchDirectSoundCloudStreamServer(scUrlOrId, queryFallback, match
         }
       }
       if (queryFallback) {
-        const sr = await fetch(`https://api-v2.soundcloud.com/search/tracks?q=${encodeURIComponent(queryFallback)}&limit=${match ? 12 : 5}&client_id=${cid}`, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+        const sr = await fetch(`https://api-v2.soundcloud.com/search/tracks?q=${encodeURIComponent(queryFallback)}&limit=${match ? 12 : 5}&client_id=${cid}`, { headers: { 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(8000) });
         if (sr.status === 401 || sr.status === 403) { cid = await refreshServerScClientId(); continue; }
         if (sr.ok) {
           const sj = await sr.json();
@@ -2020,6 +2092,16 @@ async function cacheResolvedStreamToDisk(rawStreamUrl, primaryCleanId, secondary
     if (!resp.ok || !resp.body) throw new Error('HTTP ' + resp.status);
     const arrayBuf = await resp.arrayBuffer();
     const buf = Buffer.from(arrayBuf);
+    // Only a whole song counts as cached. A server can end the response early (YouTube's fast iOS links serve only
+    // the first ~1 MB): that used to be saved as "offline" and then played as a song that stops after a few seconds.
+    const cr = resp.headers.get('content-range');
+    const crTotal = cr && /\/(\d+)\s*$/.exec(cr);
+    const announced = crTotal ? Number(crTotal[1]) : (resp.status === 200 ? Number(resp.headers.get('content-length')) || 0 : 0);
+    if (resp.status === 206 && !announced) throw new Error('partial response of unknown size');
+    if (announced && buf.length < announced) throw new Error(`incomplete download (${buf.length} of ${announced} bytes)`);
+    // No audio worth keeping is under ~32 kbit/s, so a file much smaller than that for the song's length is cut off.
+    const dur = Number(meta.duration) || 0;
+    if (dur > 60 && buf.length < dur * 4000) throw new Error(`too small for a ${Math.round(dur)} s song (${buf.length} bytes)`);
     if (buf.length > 64000) {
       await fs.promises.writeFile(tempPath, buf);
       await fs.promises.rename(tempPath, finalPath);
@@ -2079,7 +2161,7 @@ async function enforceOfflineLimit(keepId) {
       changed = true;
     } catch (e) {}
   }
-  if (changed) { try { fs.writeFileSync(METADATA_PATH, JSON.stringify(trackMetadataIndex, null, 2), 'utf-8'); } catch (e) {} }
+  if (changed) { try { writeJsonAtomic(METADATA_PATH, trackMetadataIndex); } catch (e) {} }
 }
 
 async function downloadTrackToDisk(trackUrl, trackId, platform, meta = {}) {
@@ -9206,7 +9288,7 @@ async function requestHandler(req, res) {
     try { if (audioPath && fs.existsSync(audioPath)) await fs.promises.unlink(audioPath); } catch (e) {}
     try { if (fs.existsSync(thumbPath)) await fs.promises.unlink(thumbPath); } catch (e) {}
     delete trackMetadataIndex[cleanId];
-    try { fs.writeFileSync(METADATA_PATH, JSON.stringify(trackMetadataIndex, null, 2), 'utf-8'); } catch (e) {}
+    try { writeJsonAtomic(METADATA_PATH, trackMetadataIndex); } catch (e) {}
     res.writeHead(200, { 'Content-Type': 'application/json' });
     return res.end(JSON.stringify({ success: true }));
   }

@@ -1083,6 +1083,7 @@
       panner.connect(this.spatialWet);
       this.spatialWet.connect(this.fadeGain);
       this.spatialPanner = panner;
+      this._spatialFed = true;
       return true;
     }
 
@@ -1094,6 +1095,21 @@
       this.spatialDry.gain.setTargetAtTime(1 - a, now, 0.05);
       // HRTF loses some level at distance; a little make-up keeps 8D as loud as the dry signal.
       if (this.spatialWet) this.spatialWet.gain.setTargetAtTime(a * 1.6, now, 0.05);
+      // The HRTF panner is one of the most expensive nodes there is. Once 8D was tried it used to keep rendering
+      // (at volume 0) for the rest of the session; now it is unplugged once 8D has faded out, and plugged back in
+      // when 8D comes back.
+      clearTimeout(this._spatialUnplugTimer);
+      this._spatialAmount = a;
+      if (!this.spatialPanner) return;
+      if (a > 0 && !this._spatialFed) {
+        try { this.analyserNode.connect(this.spatialPanner); this._spatialFed = true; } catch (_) {}
+      } else if (a === 0 && this._spatialFed) {
+        this._spatialUnplugTimer = setTimeout(() => {
+          if (this._spatialAmount > 0 || !this._spatialFed) return;
+          try { this.analyserNode.disconnect(this.spatialPanner); } catch (_) {}
+          this._spatialFed = false;
+        }, 400);
+      }
     }
 
     _applyMasterVolume() {

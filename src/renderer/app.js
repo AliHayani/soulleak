@@ -4748,6 +4748,22 @@ document.addEventListener('DOMContentLoaded', async () => {
     a.addEventListener('canplay', done);
   }
 
+  // One "this song failed to load" reset at a time. It used to be a { once } listener added on every click: one piled
+  // up for each song that loaded fine, and on a later song's error they all fired together and marked it stopped
+  // while the retry was bringing it back (play button and audio out of sync).
+  let loadErrorReset = null;
+  function armLoadErrorReset(fn, token) {
+    if (!el.nativeAudio) return;
+    if (loadErrorReset) el.nativeAudio.removeEventListener('error', loadErrorReset);
+    const handler = () => {
+      el.nativeAudio.removeEventListener('error', handler);
+      if (loadErrorReset === handler) loadErrorReset = null;
+      if (token === state.loadToken) fn();
+    };
+    loadErrorReset = handler;
+    el.nativeAudio.addEventListener('error', handler);
+  }
+
   async function playTrack(track, queueList = null, startIndex = -1, context = null) {
     if (track && !track._errorRetryStage) track._errorRetryStage = 0;
     if (track && track._preloadedStreamUrl && isStreamUrlExpired(track._preloadedStreamUrl)) {
@@ -4958,7 +4974,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           updatePlayPauseButton(false, false);
           if (el.trackLoadingOverlay) el.trackLoadingOverlay.classList.add('hidden');
         };
-        el.nativeAudio.addEventListener('error', onNativeAudioErrorOnce, { once: true });
+        armLoadErrorReset(onNativeAudioErrorOnce, currentToken);
         if (track._preloadedStreamUrl.includes('.m3u8') && window.Hls && Hls.isSupported()) {
           hlsInstance = new Hls({ enableWorker: true, lowLatencyMode: true, maxBufferLength: 30, maxMaxBufferLength: 60, maxBufferSize: 30 * 1000 * 1000 });
           hlsInstance.on(Hls.Events.ERROR, (_, errData) => {
@@ -5055,7 +5071,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         updatePlayPauseButton(false, false);
         if (el.trackLoadingOverlay) el.trackLoadingOverlay.classList.add('hidden');
       };
-      el.nativeAudio.addEventListener('error', onNativeAudioErrorOnce, { once: true });
+      armLoadErrorReset(onNativeAudioErrorOnce, currentToken);
 
       if (data.isHls && window.Hls && Hls.isSupported()) {
         hlsInstance = new Hls({ enableWorker: true, lowLatencyMode: true, maxBufferLength: 30, maxMaxBufferLength: 60, maxBufferSize: 30 * 1000 * 1000 });
@@ -11866,7 +11882,13 @@ document.addEventListener('DOMContentLoaded', async () => {
           }
           let clickIndex = idx;
           let currentList = tracks;
-          if (context === 'favorites') {
+          if ((context === 'favorites' || context === 'playlist') && Array.isArray(tracks) && tracks[idx] === track) {
+            // Up Next is exactly the list on screen (sorted, searched, Offline only, pins on top) from the row
+            // clicked. It used to rebuild the whole list (ignoring the search) and look the song up by name, so a
+            // song that is in the list twice started from its first copy.
+            currentList = tracks;
+            clickIndex = idx;
+          } else if (context === 'favorites') {
             currentList = sortTracksFor('favorites', state.favorites);
             clickIndex = currentList.findIndex(t => isSameTrack(t, track));
           } else if (context === 'playlist') {
@@ -11992,7 +12014,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     
     container.innerHTML = '';
-    
+    container._tracks = tracks || []; // the list as shown (sorted, filtered), for drag-reordering
+
     if (!tracks || tracks.length === 0) {
       container.style.paddingTop = '0px';
       container.style.paddingBottom = '0px';
@@ -13826,10 +13849,36 @@ function renderClickableArtists(container, rawArtist, hintTrack = null) {
     }
   });
 
+  // Apply a drag in the shown list to the saved list. The shown list can be sorted by date, filtered (Offline only)
+  // or have pinned songs on top, so a position in it is not a position in the saved list: move the song itself,
+  // next to the song it was dropped on.
+  function applyTrackDrag(saved, shown, fromIdx, toIdx, wasManual) {
+    const fromT = shown[fromIdx];
+    const toT = shown[toIdx];
+    if (!fromT || !toT || fromT === toT) return saved;
+    // Sorted by date with nothing hidden: what you see becomes the manual order, with your move in it.
+    if (!wasManual && shown.length === saved.length) {
+      const next = shown.slice();
+      next.splice(fromIdx, 1);
+      next.splice(toIdx, 0, fromT);
+      return next;
+    }
+    const next = saved.slice();
+    const a = next.indexOf(fromT);
+    if (a < 0) return saved;
+    next.splice(a, 1);
+    let b = next.indexOf(toT);
+    if (b < 0) return saved;
+    if (toIdx > fromIdx) b += 1;
+    next.splice(b, 0, fromT);
+    return next;
+  }
+
   enableTrackSort({
     container: el.favoritesTracksList,
     isFilterActive: () => Boolean(el.favoritesSearchInput && el.favoritesSearchInput.value.trim()),
     onReorder: (fromIdx, toIdx) => {
+      const wasManual = !el.favoritesSort || el.favoritesSort.value === 'manual';
       if (el.favoritesSort && el.favoritesSort.value !== 'manual') {
         el.favoritesSort.value = 'manual';
         setTrackSortMode('favorites', 'manual');
@@ -13843,12 +13892,9 @@ function renderClickableArtists(container, rawArtist, hintTrack = null) {
         }
       }
       const savedScroll = el.mainContent ? el.mainContent.scrollTop : 0;
-      const [moved] = state.favorites.splice(fromIdx, 1);
-      state.favorites.splice(toIdx, 0, moved);
+      state.favorites = applyTrackDrag(state.favorites, el.favoritesTracksList._tracks || state.favorites, fromIdx, toIdx, wasManual);
       localStorage.setItem('devsize_favorites', JSON.stringify(state.favorites));
-      if (el.favoritesSubtitle) {
-        el.favoritesSubtitle.textContent = `${state.favorites.length} tracks saved`;
-      }
+      renderFavoritesView();
       if (el.mainContent) el.mainContent.scrollTop = savedScroll;
     }
   });
@@ -13857,6 +13903,7 @@ function renderClickableArtists(container, rawArtist, hintTrack = null) {
     container: el.playlistTracksList,
     isFilterActive: () => Boolean(el.playlistSearchInput && el.playlistSearchInput.value.trim()),
     onReorder: (fromIdx, toIdx) => {
+      const wasManual = !el.playlistSort || el.playlistSort.value === 'manual';
       if (el.playlistSort && el.playlistSort.value !== 'manual') {
         el.playlistSort.value = 'manual';
         setTrackSortMode('playlist', 'manual');
@@ -13872,9 +13919,11 @@ function renderClickableArtists(container, rawArtist, hintTrack = null) {
       const savedScroll = el.mainContent ? el.mainContent.scrollTop : 0;
       const pl = state.currentPlaylist || (state.playlists || []).find(p => p.id === state.currentPlaylistId);
       if (pl && pl.tracks) {
-        const [moved] = pl.tracks.splice(fromIdx, 1);
-        pl.tracks.splice(toIdx, 0, moved);
+        pl.tracks = applyTrackDrag(pl.tracks, el.playlistTracksList._tracks || pl.tracks, fromIdx, toIdx, wasManual);
         localStorage.setItem('devsize_playlists', JSON.stringify(state.playlists));
+        // Redraw just the song list (not the whole page, which jumped back to the top) so every number and row
+        // matches the saved order.
+        renderTracks(el.playlistTracksList, playlistShownTracks(pl), 'playlist');
       }
       if (el.mainContent) el.mainContent.scrollTop = savedScroll;
     }
@@ -13912,9 +13961,9 @@ function renderClickableArtists(container, rawArtist, hintTrack = null) {
     try { return localStorage.getItem('sl_offline_only') === '1'; } catch (_) { return false; }
   }
   // The playlist exactly as the list shows it (sort + Offline only), for Play, Shuffle and row clicks.
+  // What Play / Shuffle / a row click plays: the list as shown, search included.
   function playlistPlayOrder(pl) {
-    const list = sortTracksFor('playlist', (pl && pl.tracks) || [], pl && pl.id);
-    return isPlaylistOfflineOnly() ? list.filter(isTrackOffline) : list;
+    return pl ? playlistShownTracks(pl) : [];
   }
   // Play a list from #1 in order (shuffle off), or shuffled (shuffle on).
   function playListFromTop(list, context, shuffle) {
@@ -13934,6 +13983,21 @@ function renderClickableArtists(container, rawArtist, hintTrack = null) {
       if (el.btnShuffle) el.btnShuffle.classList.toggle('active', shuffle);
     }
     playTrack(q[0], q, 0, context);
+  }
+
+  // The playlist's songs as the page shows them: searched, sorted (pins on top) and, if on, only the offline ones.
+  function playlistShownTracks(pl) {
+    const query = el.playlistSearchInput ? el.playlistSearchInput.value.trim().toLowerCase() : '';
+    let list = pl.tracks || [];
+    if (query) {
+      list = list.filter(t =>
+      (t.title && t.title.toLowerCase().includes(query)) ||
+      (t.artist && t.artist.toLowerCase().includes(query))
+      );
+    }
+    list = sortTracksFor('playlist', list, pl.id);
+    if (isPlaylistOfflineOnly()) list = list.filter(isTrackOffline);
+    return list;
   }
 
   function openPlaylistDetail(playlistId) {
@@ -13984,16 +14048,8 @@ function renderClickableArtists(container, rawArtist, hintTrack = null) {
       };
     }
     const query = el.playlistSearchInput ? el.playlistSearchInput.value.trim().toLowerCase() : '';
-    let filtered = pl.tracks;
-    if (query) {
-      filtered = pl.tracks.filter(t =>
-      (t.title && t.title.toLowerCase().includes(query)) ||
-      (t.artist && t.artist.toLowerCase().includes(query))
-      );
-    }
-    filtered = sortTracksFor('playlist', filtered, pl.id);
+    const filtered = playlistShownTracks(pl);
     const offOnly = isPlaylistOfflineOnly();
-    if (offOnly) filtered = filtered.filter(isTrackOffline);
     const offBtn = document.getElementById('btn-playlist-offline-only');
     if (offBtn) { offBtn.classList.toggle('active', offOnly); offBtn.setAttribute('aria-pressed', offOnly ? 'true' : 'false'); }
     if (el.playlistSort) {
@@ -21594,7 +21650,8 @@ function bindCoverHoldZoom(wrapEl) {
       return { cleanText: text, bannerUrl };
     }
 
-    function populateOtaUpdateSheet(info) {
+    // manual: the user pressed "Check for updates", so show the update even if they ignored this version before.
+    function populateOtaUpdateSheet(info, manual = manualUpdateCheck) {
       const modal = document.getElementById('update-modal');
       const sheet = document.getElementById('update-sheet-card');
       const spinnerBox = document.getElementById('update-center-spinner');
@@ -21608,7 +21665,7 @@ function bindCoverHoldZoom(wrapEl) {
 
       const rawVer = String(info?.version || '').replace(/^v/i, '');
       const ignoredVer = localStorage.getItem('riff_ignored_update_ver') || '';
-      if (!manualUpdateCheck && rawVer && ignoredVer === rawVer) return;
+      if (!manual && rawVer && ignoredVer === rawVer) return;
 
       const displayVer = rawVer.endsWith('.0.0') ? ('v' + rawVer.slice(0, -4)) : (rawVer.endsWith('.0') ? ('v' + rawVer.slice(0, -2)) : ('v' + rawVer));
       if (verEl) verEl.textContent = displayVer || '';
@@ -21741,6 +21798,9 @@ function bindCoverHoldZoom(wrapEl) {
 
     if (api && api.onUpdateAvailable) {
       api.onUpdateAvailable(async (info) => {
+        // Read this before restoreButton() clears it: after Later/Ignore, a manual check used to find the update
+        // but treat it as an automatic one and silently skip the ignored version, so nothing happened.
+        const wasManual = manualUpdateCheck;
         restoreButton();
         latestUpdateInfo = { ...(info || {}) };
         canNativeInstall = !!info?.canInstall;
@@ -21764,7 +21824,7 @@ function bindCoverHoldZoom(wrapEl) {
           } catch (_) {}
         }
 
-        populateOtaUpdateSheet(latestUpdateInfo);
+        populateOtaUpdateSheet(latestUpdateInfo, wasManual);
       });
     }
 

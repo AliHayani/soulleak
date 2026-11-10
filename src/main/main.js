@@ -184,32 +184,71 @@ function runGUI() {
     }
   }
 
+  // storage.json holds everything the app remembers (playlists, likes, history, ranks and listening time, settings).
+  // Every launch keeps the last good copy as storage.backup.json (and the one before as storage.backup-prev.json).
+  // If storage.json can't be read, it is set aside as storage.corrupt-<time>.json and the backup is loaded instead.
+  // Before, a broken file started the app empty and the first save overwrote it, losing everything.
+  const backupFileFor = (file, suffix) => file.replace(/\.json$/i, '') + suffix;
+  const parseStorage = (file) => {
+    if (!fs.existsSync(file)) return null;
+    const raw = fs.readFileSync(file, 'utf8').trim();
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' && Object.keys(parsed).length > 0 ? parsed : null;
+  };
+  let storageBackedUp = false;
   function readStorageDiskSync() {
     const file = getActiveStorageFile();
+    const backup = backupFileFor(file, '.backup.json');
+    const backupPrev = backupFileFor(file, '.backup-prev.json');
     try {
-      if (fs.existsSync(file)) {
-        const raw = fs.readFileSync(file, 'utf8').trim();
-        if (raw) {
-          const parsed = JSON.parse(raw);
-          if (parsed && typeof parsed === 'object' && Object.keys(parsed).length > 0) return parsed;
+      const parsed = parseStorage(file);
+      if (parsed) {
+        if (!storageBackedUp) {
+          storageBackedUp = true;
+          try {
+            if (fs.existsSync(backup)) fs.copyFileSync(backup, backupPrev);
+            fs.copyFileSync(file, backup + '.tmp');
+            fs.renameSync(backup + '.tmp', backup);
+          } catch (e) { console.warn('[soulleak] storage backup failed:', e.message); }
         }
+        return parsed;
       }
     } catch (e) {
-      console.warn('[riff] storage.json read warning:', e.message);
+      console.warn('[soulleak] storage.json is damaged, loading the backup:', e.message);
+      try { fs.renameSync(file, backupFileFor(file, `.corrupt-${Date.now()}.json`)); } catch (_) {}
+    }
+    for (const b of [backup, backupPrev]) {
+      try {
+        const parsed = parseStorage(b);
+        if (parsed) { storageBackedUp = true; return parsed; }
+      } catch (_) {}
     }
     return null;
   }
 
+  // Windows can refuse a rename for a moment while an antivirus or indexer holds the file: retry a few times.
+  function renameWithRetry(from, to) {
+    for (let i = 0; ; i++) {
+      try { fs.renameSync(from, to); return; } catch (e) {
+        if (i >= 4 || !/EPERM|EACCES|EBUSY/.test(e.code || '')) throw e;
+        try { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 40); } catch (_) {}
+      }
+    }
+  }
+
   function writeStorageDiskSync(data) {
-    if (!data || typeof data !== 'object') return;
+    // An empty snapshot is never a real save (the page failed to load its data): don't let it replace the file.
+    if (!data || typeof data !== 'object' || Object.keys(data).length === 0) return;
     const file = getActiveStorageFile();
-    const tmpFile = file + '.tmp';
+    const json = JSON.stringify(data, null, 2);
     try {
-      fs.writeFileSync(tmpFile, JSON.stringify(data, null, 2), 'utf8');
-      fs.renameSync(tmpFile, file);
+      fs.writeFileSync(file + '.tmp', json, 'utf8');
+      renameWithRetry(file + '.tmp', file);
     } catch (_) {
       try {
-        fs.writeFileSync(FALLBACK_STORAGE_FILE, JSON.stringify(data, null, 2), 'utf8');
+        fs.writeFileSync(FALLBACK_STORAGE_FILE + '.tmp', json, 'utf8');
+        renameWithRetry(FALLBACK_STORAGE_FILE + '.tmp', FALLBACK_STORAGE_FILE);
       } catch (_) {}
     }
   }

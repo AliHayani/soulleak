@@ -41,6 +41,8 @@
       "src/**/*",
       "!src/storage.json",
       "!src/storage.json.tmp",
+      "!src/storage.*.json",
+      "!src/storage.*.tmp",
       "assets/**/*",
       "vendor/**/*",
       "package.json",

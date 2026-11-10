@@ -26,8 +26,9 @@
       border-radius: 18px;
       background: #0b0a10;
       border: 1px solid rgba(139, 92, 246, 0.35);
-      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.05);
-      backdrop-filter: blur(14px);
+      /* The window is only 6 px bigger than the pill on each side: a bigger shadow, or a backdrop blur (useless on
+         an opaque pill), gets cut off at the window edge and shows as a grey box around the player. */
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.05);
       color: #fff;
       overflow: hidden;
       transition: border-color 0.2s ease;
@@ -256,7 +257,7 @@
       border-radius: 14px;
       background: #0b0a10;
       border: 1px solid rgba(139, 92, 246, 0.45);
-      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.55);
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
       overflow-y: auto;
       color: #fff;
     }
